@@ -11,6 +11,7 @@ public record PlannerExecutionResult(
         PlannerActionPlan appliedPlan,
         EmailDraftRecord emailDraft,
         CalendarItemRecord calendarItem,
-        List<String> candidateIds
+        List<String> candidateIds,
+        List<String> candidateSummaries
 ) {
 }

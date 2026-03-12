@@ -379,6 +379,21 @@ h3,
   font-size: 0.92rem;
 }
 
+.model-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 320px;
+}
+
+.model-selector span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .chat-panel {
   display: flex;
   flex-direction: column;
@@ -632,6 +647,41 @@ pre {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+}
+
+.message-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  font-size: 0.92rem;
+}
+
+.message-outcome span {
+  color: var(--muted);
+}
+
+.outcome-success {
+  background: rgba(232, 247, 236, 0.9);
+  border-color: rgba(82, 145, 96, 0.35);
+}
+
+.outcome-warning {
+  background: rgba(255, 245, 224, 0.92);
+  border-color: rgba(191, 143, 54, 0.38);
+}
+
+.outcome-error {
+  background: rgba(254, 235, 232, 0.92);
+  border-color: rgba(184, 83, 64, 0.34);
+}
+
+.outcome-neutral {
+  background: rgba(244, 248, 251, 0.9);
 }
 
 .trace-item {

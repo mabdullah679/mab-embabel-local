@@ -34,7 +34,9 @@ public class SchemaInitializer {
             jdbcTemplate.execute("alter table email_drafts add column if not exists sender_name text");
             jdbcTemplate.execute("create table if not exists app_state (" +
                     "id uuid primary key, " +
+                    "active_generation_model text, " +
                     "created_at timestamptz not null default now())");
+            jdbcTemplate.execute("alter table app_state add column if not exists active_generation_model text");
             jdbcTemplate.execute("create table if not exists rag_source_documents (" +
                     "id uuid primary key, " +
                     "title text not null, " +

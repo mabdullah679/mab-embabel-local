@@ -84,6 +84,12 @@ Preview the selected deployment strategy:
 python scripts/deploy.py plan
 ```
 
+Run prerequisite checks before startup:
+
+```bash
+python scripts/deploy.py preflight
+```
+
 Start the stack without rebuilding:
 
 ```bash
@@ -131,6 +137,7 @@ From the repo root:
 
 ```bash
 python scripts/deploy.py plan
+python scripts/deploy.py preflight
 python scripts/deploy.py bootstrap
 ```
 

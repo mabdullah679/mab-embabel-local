@@ -37,6 +37,7 @@ alter table email_drafts add column if not exists sender_name text;
 
 create table if not exists app_state (
     id uuid primary key,
+    active_generation_model text,
     created_at timestamptz not null default now()
 );
 

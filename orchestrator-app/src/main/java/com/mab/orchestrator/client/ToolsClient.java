@@ -77,6 +77,15 @@ public class ToolsClient {
         return get("/api/state", SystemStateResponse.class);
     }
 
+    public SystemStateResponse selectGenerationModel(ModelSelectionRequest request) {
+        return restTemplate.exchange(
+                toolsBaseUrl + "/api/state/model",
+                org.springframework.http.HttpMethod.PUT,
+                new org.springframework.http.HttpEntity<>(request),
+                SystemStateResponse.class
+        ).getBody();
+    }
+
     private <T> T invokeTool(String toolName, Object request, Class<T> responseType) {
         ToolCallback callback = toolCallbacks.get(toolName);
         if (callback == null) {

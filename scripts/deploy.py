@@ -28,6 +28,7 @@ DEFAULT_OLLAMA_READ_TIMEOUT = "45s"
 DEFAULT_PRIMARY_WARMUP_TIMEOUT_SECONDS = 90
 DEFAULT_FALLBACK_WARMUP_TIMEOUT_SECONDS = 30
 DEFAULT_WARMUP_PROGRESS_INTERVAL_SECONDS = 5
+MIN_PYTHON = (3, 9)
 RAG_SEED_DOCS = [
     "Spring MCP tools are orchestrated by a planner agent in this local architecture.",
     "The orchestrator receives natural language queries and routes them to typed tools.",
@@ -100,6 +101,32 @@ def is_command_available(command: str) -> bool:
     return shutil.which(command) is not None
 
 
+def check_python_version() -> None:
+    if sys.version_info < MIN_PYTHON:
+        required = ".".join(map(str, MIN_PYTHON))
+        current = ".".join(map(str, sys.version_info[:3]))
+        raise SystemExit(f"Python {required}+ is required, but found {current}.")
+
+
+def check_docker_available() -> None:
+    if not is_command_available("docker"):
+        raise SystemExit("Docker is required, but the `docker` command is not installed or not on PATH.")
+
+
+def check_docker_compose_available() -> None:
+    try:
+        run(["docker", "compose", "version"], capture=True)
+    except Exception as exc:
+        raise SystemExit("Docker Compose is required, but `docker compose` is not available.") from exc
+
+
+def check_docker_daemon() -> None:
+    try:
+        run(["docker", "info"], capture=True)
+    except Exception as exc:
+        raise SystemExit("Docker is installed, but the Docker daemon is not reachable. Start Docker Desktop/Engine and retry.") from exc
+
+
 def has_nvidia_host() -> bool:
     if not is_command_available("nvidia-smi"):
         return False
@@ -114,6 +141,17 @@ def host_ollama_ready() -> bool:
     try:
         request_json(f"{DEFAULT_OLLAMA_URL}/api/tags", timeout=10)
         return True
+    except Exception:
+        return False
+
+
+def docker_supports_nvidia() -> bool:
+    try:
+        info = run(["docker", "info", "--format", "{{json .Runtimes}}"], capture=True).stdout.strip()
+        if not info:
+            return False
+        runtimes = json.loads(info)
+        return isinstance(runtimes, dict) and "nvidia" in runtimes
     except Exception:
         return False
 
@@ -261,6 +299,32 @@ def ensure_host_ollama(strategy: str) -> None:
         )
 
 
+def ensure_nvidia_runtime() -> None:
+    if not has_nvidia_host():
+        raise SystemExit("NVIDIA deployment was selected, but `nvidia-smi` is unavailable or not working on the host.")
+    if not docker_supports_nvidia():
+        raise SystemExit("NVIDIA deployment was selected, but Docker does not report an `nvidia` runtime. Install/configure NVIDIA container support and retry.")
+
+
+def run_preflight(strategy: str) -> None:
+    print("Running preflight checks...")
+    check_python_version()
+    print(f"  Python: {sys.version.split()[0]}")
+    check_docker_available()
+    print("  Docker CLI: available")
+    check_docker_compose_available()
+    print("  Docker Compose: available")
+    check_docker_daemon()
+    print("  Docker daemon: reachable")
+
+    if strategy == "nvidia-container-ollama":
+        ensure_nvidia_runtime()
+        print("  NVIDIA host/runtime: ready")
+    else:
+        ensure_host_ollama(strategy)
+        print(f"  Host Ollama: reachable at {DEFAULT_OLLAMA_URL}")
+
+
 def print_plan(strategy: str, files: list[Path], env: dict[str, str]) -> None:
     print(f"Deployment strategy: {strategy}")
     print("Compose files:")
@@ -316,7 +380,7 @@ def bootstrap(strategy: str, files: list[Path], env: dict[str, str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dynamic deployment orchestrator for mab-embabel-local")
-    parser.add_argument("command", choices=["plan", "up", "rebuild", "down", "ps", "bootstrap"])
+    parser.add_argument("command", choices=["plan", "preflight", "up", "rebuild", "down", "ps", "bootstrap"])
     args = parser.parse_args()
 
     strategy, files, env = detect_strategy()
@@ -325,15 +389,20 @@ def main() -> None:
         print_plan(strategy, files, env)
         return
 
-    if args.command == "up":
-        ensure_host_ollama(strategy)
+    if args.command == "preflight":
         print_plan(strategy, files, env)
+        run_preflight(strategy)
+        return
+
+    if args.command == "up":
+        print_plan(strategy, files, env)
+        run_preflight(strategy)
         do_up(files, env, build=False)
         return
 
     if args.command == "rebuild":
-        ensure_host_ollama(strategy)
         print_plan(strategy, files, env)
+        run_preflight(strategy)
         do_up(files, env, build=True)
         return
 
@@ -344,11 +413,13 @@ def main() -> None:
 
     if args.command == "ps":
         print_plan(strategy, files, env)
+        run_preflight(strategy)
         do_ps(files, env)
         return
 
     if args.command == "bootstrap":
         print_plan(strategy, files, env)
+        run_preflight(strategy)
         bootstrap(strategy, files, env)
 
 

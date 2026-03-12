@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
@@ -25,7 +26,8 @@ public class PlannerAgentService {
     private static final int RECENT_TURN_LIMIT = 4;
     private static final Pattern EVENT_TIME_PATTERN = Pattern.compile("\\b(today|tomorrow|tonight|next\\s+\\w+|at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?|\\d{1,2}(?::\\d{2})?\\s*(?:am|pm))\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern EVENT_PARTICIPANT_PATTERN = Pattern.compile("\\bwith\\s+[a-z][a-z\\s.'&-]*", Pattern.CASE_INSENSITIVE);
-    private static final Pattern EXPLICIT_SENDER_PATTERN = Pattern.compile("\\b(?:my name is|i am|i'm|from)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,3})\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EXPLICIT_SENDER_PATTERN = Pattern.compile("\\b(?:my name is|i am|i'm|sender is|sender:?|from me as)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,3})\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PAREN_SENDER_PATTERN = Pattern.compile("\\bfrom me\\s*\\(\\s*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,3})\\s*\\)", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern UUID_PATTERN = Pattern.compile("\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("\\b(email|e-mail|draft|reply|send|subject|tone)\\b", Pattern.CASE_INSENSITIVE);
@@ -42,9 +44,19 @@ public class PlannerAgentService {
     private static final Pattern SELF_CONTAINED_PATTERN = Pattern.compile("\\b(email|draft|meeting|calendar|metadata|uuid|hardware|docs?|document|architecture|rag)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern CHAT_PATTERN = Pattern.compile("\\b(hi|hello|hey|thanks|thank you|who are you|what can you do|how are you|why|can you explain|explain that|tell me more|help me understand|good morning|good afternoon|good evening|sorry)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern TASK_REQUEST_PATTERN = Pattern.compile("\\b(create|update|delete|send|schedule|draft|lookup|search|find|book|cancel|move|ingest|write|build)\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern GENERIC_SENDER_PATTERN = Pattern.compile("^(the sender|sender|me|myself|from me)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern GENERIC_SENDER_PATTERN = Pattern.compile("^(the sender|sender|me|myself|from me|your name|the contacts?|contacts?)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern CALENDAR_FOLLOW_UP_PATTERN = Pattern.compile("\\b(the one|titled|default title|change the task type|change the type|make it a reminder|make it a task|make it a meeting|reminder|meeting|task)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern EMAIL_FOLLOW_UP_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$|\\b(recipient|sender|send it|schedule it|make it shorter|rewrite it|joe@example|alex@example)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EMAIL_DRAFT_REFERENCE_PATTERN = Pattern.compile("\\b(draft id|email draft|draft\\s+[0-9a-fA-F]{8}-)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TIME_ONLY_FOLLOW_UP_PATTERN = Pattern.compile("^(?:at\\s+)?\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?(?:\\s+(?:today|tomorrow))?\\.?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NAME_ONLY_PATTERN = Pattern.compile("^[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,3}\\.?$");
+    private static final Pattern QUOTED_TEXT_PATTERN = Pattern.compile("\"([^\"]+)\"");
+    private static final Pattern TITLE_REFERENCE_PATTERN = Pattern.compile("\\btitled\\s+\"([^\"]+)\"|\\btitled\\s+([A-Za-z0-9][A-Za-z0-9\\s'._-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TODAY_PATTERN = Pattern.compile("\\btoday\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TOMORROW_PATTERN = Pattern.compile("\\btomorrow\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TIME_PATTERN = Pattern.compile("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\[[^\\]]+]|<[^>]+>");
+    private static final Pattern PLATFORM_PATTERN = Pattern.compile("\\b(zoom|teams|google meet|conference room|room [a-z0-9-]+)\\b", Pattern.CASE_INSENSITIVE);
 
     private final ToolsClient toolsClient;
     private final OllamaClient ollamaClient;
@@ -59,38 +71,47 @@ public class PlannerAgentService {
     public AgentQueryResponse execute(AgentQueryRequest request) {
         String query = request.query().trim();
         List<ConversationTurn> rawHistory = request.history() == null ? List.of() : request.history();
+        PendingClarification pendingClarification = request.pendingClarification();
         List<ToolTrace> traces = new ArrayList<>();
         if (query.isBlank()) {
-            return new AgentQueryResponse("Please provide a request.", traces, 0);
+            return respond("Please provide a request.", traces, 0, "VALIDATION_ERROR", null, null, pendingClarification);
         }
         ContextSelection context = selectContext(query, rawHistory, traces);
         List<ConversationTurn> history = context.history();
 
-        String family = detectTaskFamily(query.toLowerCase(Locale.ROOT), history);
+        String family = detectTaskFamily(query.toLowerCase(Locale.ROOT), history, pendingClarification);
         addTrace(traces, "PlannerFamilySelection", query, "{\"taskFamily\":\"" + family + "\"}", true, 0);
         if ("clarification".equals(family)) {
-            return new AgentQueryResponse("I can help with that, but the request mixes multiple task types. Tell me whether you want an email action or a calendar action first.", traces, traces.size());
+            return respond("I can help with that, but the request mixes multiple task types. Tell me whether you want an email action or a calendar action first.", traces, traces.size(), "CLARIFICATION", null, null, pendingClarification);
         }
         if ("chat".equals(family)) {
             String answer = respondChat(query, history, traces);
-            return new AgentQueryResponse(answer, traces, traces.size());
+            return respond(answer, traces, traces.size(), "COMPLETED", null, null, null);
         }
         if ("unsupported".equals(family)) {
-            return new AgentQueryResponse(outOfScopeResponse(), traces, traces.size());
+            return respond(outOfScopeResponse(), traces, traces.size(), "VALIDATION_ERROR", null, null, null);
         }
 
-        PlannerActionPlan plan = plan(query, history, family, traces);
+        PlannerActionPlan plan = continuePendingClarification(query, history, pendingClarification, traces);
         if (plan == null) {
-            return new AgentQueryResponse("I couldn't build a valid action plan for that request.", traces, traces.size());
+            plan = plan(query, history, family, traces);
+        }
+        if (plan == null) {
+            PlannerActionPlan fallbackPlan = heuristicFallbackPlan(query, history, family);
+            if (fallbackPlan == null) {
+                return respond("I couldn't build a valid action plan for that request.", traces, traces.size(), "VALIDATION_ERROR", null, null, pendingClarification);
+            }
+            addTrace(traces, "PlannerFallback", query, toJson(fallbackPlan), true, 0);
+            plan = fallbackPlan;
         }
         if (plan.needsClarification()) {
-            String answer = finalizeAnswer(query, history, plan.clarificationQuestion(), traces);
-            return new AgentQueryResponse(answer, traces, traces.size());
+            PendingClarification pending = new PendingClarification(plan.taskFamily(), plan.action(), plan.clarificationQuestion(), plan, List.of(), List.of());
+            return respond(plan.clarificationQuestion(), traces, traces.size(), "CLARIFICATION", plan, null, pending);
         }
 
         PlannerActionPlan enrichedPlan = enrichPlan(query, history, plan, traces);
-        String answer = executePlan(query, history, family, enrichedPlan, traces);
-        return new AgentQueryResponse(answer, traces, traces.size());
+        ExecutionEnvelope execution = executePlan(query, history, family, enrichedPlan, traces);
+        return respond(execution.result(), traces, traces.size(), execution.status(), enrichedPlan, execution.executionResult(), execution.pendingClarification());
     }
 
     private PlannerActionPlan plan(String query, List<ConversationTurn> history, String family, List<ToolTrace> traces) {
@@ -115,10 +136,12 @@ public class PlannerAgentService {
 
         try {
             String raw = ollamaClient.generateJson(prompt);
-            addTrace(traces, "PlannerJSON", prompt, raw, true, 0);
-            PlannerActionPlan plan = objectMapper.readValue(extractJson(raw), PlannerActionPlan.class);
-            boolean valid = family.equalsIgnoreCase(plan.taskFamily()) && !isBlank(plan.action());
-            addTrace(traces, "PlannerValidation", toJson(Map.of("family", family)), toJson(Map.of("valid", valid, "action", plan.action())), valid, 0);
+            addTrace(traces, "PlannerJSONRaw", prompt, raw, true, 0);
+            Map<String, Object> rawPlan = objectMapper.readValue(extractJson(raw), new TypeReference<>() {});
+            PlannerActionPlan plan = normalizePlannerPlan(rawPlan, query, family);
+            addTrace(traces, "PlannerJSONNormalized", prompt, toJson(plan), plan != null, 0);
+            boolean valid = plan != null && family.equalsIgnoreCase(plan.taskFamily()) && !isBlank(plan.action());
+            addTrace(traces, "PlannerValidation", toJson(Map.of("family", family)), toJson(Map.of("valid", valid, "action", plan == null ? null : plan.action())), valid, 0);
             return valid ? plan : null;
         } catch (Exception exception) {
             addTrace(traces, "PlannerValidation", family, exception.getMessage(), false, 0);
@@ -127,6 +150,9 @@ public class PlannerAgentService {
     }
 
     private PlannerActionPlan enrichPlan(String query, List<ConversationTurn> history, PlannerActionPlan plan, List<ToolTrace> traces) {
+        if ("calendar".equalsIgnoreCase(plan.taskFamily()) && "create_calendar_item".equals(plan.action())) {
+            return enrichCalendarCreatePlan(query, plan);
+        }
         if (!"email".equalsIgnoreCase(plan.taskFamily())) {
             return plan;
         }
@@ -172,35 +198,87 @@ public class PlannerAgentService {
         return plan;
     }
 
-    private String executePlan(String query, List<ConversationTurn> history, String family, PlannerActionPlan plan, List<ToolTrace> traces) {
+    private PlannerActionPlan enrichCalendarCreatePlan(String query, PlannerActionPlan plan) {
+        Map<String, Object> arguments = new LinkedHashMap<>(plan.arguments() == null ? Map.of() : plan.arguments());
+        PlannerLookup lookup = plan.targetLookup();
+        if (isBlank(stringArg(arguments, "title"))) {
+            String inferredTitle = firstNonBlank(
+                    extractQuotedText(query),
+                    extractTitleReference(query),
+                    lookup == null ? null : lookup.titleLike()
+            );
+            if (!isBlank(inferredTitle)) {
+                arguments.put("title", inferredTitle);
+            }
+        }
+        if (isBlank(stringArg(arguments, "date"))) {
+            String inferredDate = inferRelativeDate(query);
+            if (!isBlank(inferredDate)) {
+                arguments.put("date", inferredDate);
+            } else if (lookup != null && !isBlank(lookup.date())) {
+                arguments.put("date", lookup.date());
+            }
+        }
+        if (isBlank(stringArg(arguments, "time"))) {
+            String inferredTime = inferTime(query);
+            if (!isBlank(inferredTime)) {
+                arguments.put("time", inferredTime);
+            } else if (lookup != null && !isBlank(lookup.time())) {
+                arguments.put("time", lookup.time());
+            }
+        }
+        return new PlannerActionPlan(
+                plan.taskFamily(),
+                plan.action(),
+                plan.targetEntityType(),
+                plan.targetEntityId(),
+                plan.targetLookup(),
+                arguments,
+                plan.needsClarification(),
+                plan.clarificationQuestion(),
+                plan.confidence()
+        );
+    }
+
+    private ExecutionEnvelope executePlan(String query, List<ConversationTurn> history, String family, PlannerActionPlan plan, List<ToolTrace> traces) {
         if ("metadata".equals(family)) {
             String uuid = coalesce(plan.targetEntityId(), stringArg(plan.arguments(), "uuid"));
-            return executeDirect(query, history, traces, "MetadataLookupTool", Map.of("uuid", uuid), () -> toJson(toolsClient.metadata(new MetadataLookupRequest(uuid))));
+            return new ExecutionEnvelope(
+                    executeDirect(query, history, traces, "MetadataLookupTool", Map.of("uuid", uuid), () -> toJson(toolsClient.metadata(new MetadataLookupRequest(uuid)))),
+                    "COMPLETED",
+                    null,
+                    null
+            );
         }
         if ("hardware".equals(family)) {
             String deviceName = coalesce(stringArg(plan.arguments(), "deviceName"), stringArg(plan.arguments(), "query"));
-            return executeDirect(query, history, traces, "HardwareInventoryTool", Map.of("deviceName", deviceName), () -> toJson(toolsClient.hardware(new HardwareInventoryRequest(deviceName))));
+            return new ExecutionEnvelope(
+                    executeDirect(query, history, traces, "HardwareInventoryTool", Map.of("deviceName", deviceName), () -> toJson(toolsClient.hardware(new HardwareInventoryRequest(deviceName)))),
+                    "COMPLETED",
+                    null,
+                    null
+            );
         }
         if ("rag".equals(family)) {
             String raw = executeDirect(query, history, traces, "RAGRetrievalTool", Map.of("queryText", query), () -> toJson(toolsClient.rag(new RagRetrievalRequest(query))));
-            return finalizeAnswer(query, history, summarizeOrLlm(raw, query), traces);
+            return new ExecutionEnvelope(finalizeAnswer(query, history, summarizeOrLlm(raw, query), traces), "COMPLETED", null, null);
         }
 
         PlannerExecutionResult result = trace("ToolExecution", toJson(plan), traces, () -> toolsClient.executePlan(plan));
         if (result == null) {
-            return "Tool execution failed.";
+            return new ExecutionEnvelope("Tool execution failed.", "VALIDATION_ERROR", null, null);
         }
         if (result.clarificationNeeded()) {
             addTrace(traces, "ClarificationResult", toJson(plan), toJson(result), true, 0);
-            return result.clarificationQuestion();
+            PendingClarification pending = new PendingClarification(plan.taskFamily(), plan.action(), result.clarificationQuestion(), plan, result.candidateIds(), result.candidateSummaries());
+            return new ExecutionEnvelope(result.clarificationQuestion(), "CLARIFICATION", result, pending);
         }
         if ("VALIDATION_ERROR".equalsIgnoreCase(result.status())) {
             addTrace(traces, "ValidationResult", toJson(plan), toJson(result), false, 0);
-            return result.message();
+            return new ExecutionEnvelope(result.message(), "VALIDATION_ERROR", result, null);
         }
         addTrace(traces, "ValidationResult", toJson(plan), toJson(result), true, 0);
-        String summary = summarizeExecutionResult(result);
-        return finalizeAnswer(query, history, summary, traces);
+        return new ExecutionEnvelope(renderExecutionResult(result), "COMPLETED", result, null);
     }
 
     private String executeDirect(String query, List<ConversationTurn> history, List<ToolTrace> traces, String tool, Object input, ToolCall<String> call) {
@@ -213,7 +291,9 @@ public class PlannerAgentService {
         String historyText = formatHistory(history);
         String prompt = existingDraft == null
                 ? """
-                Write a natural email draft as strict JSON with keys subject, body, tone.
+                Write a grounded email draft as strict JSON with keys subject, body, tone.
+                Do not invent dates, times, platforms, rooms, or placeholders.
+                Do not add a greeting or sign-off.
                 Conversation history:
                 %s
                 Sender name: %s
@@ -222,6 +302,8 @@ public class PlannerAgentService {
                 """.formatted(historyText, stringArg(arguments, "senderName"), query)
                 : """
                 Rewrite this existing email as strict JSON with keys subject, body, tone.
+                Preserve facts already present. Do not invent dates, times, platforms, rooms, or placeholders.
+                Do not add a greeting or sign-off.
                 Conversation history:
                 %s
                 Sender name: %s
@@ -235,8 +317,14 @@ public class PlannerAgentService {
             String raw = ollamaClient.generateJson(prompt);
             addTrace(traces, "EmailGeneration", prompt, raw, true, 0);
             Map<String, Object> generated = objectMapper.readValue(extractJson(raw), new TypeReference<>() {});
-            arguments.putIfAbsent("subject", generated.get("subject"));
-            arguments.put("body", generated.getOrDefault("body", arguments.get("body")));
+            String subject = objectAsString(generated.get("subject"));
+            String body = sanitizeGeneratedEmailBody(objectAsString(generated.get("body")));
+            if (!isValidGeneratedEmail(subject, body, query, history, existingDraft)) {
+                addTrace(traces, "EmailGenerationValidation", prompt, "Rejected ungrounded generated email content.", false, 0);
+                return plan;
+            }
+            arguments.putIfAbsent("subject", subject);
+            arguments.put("body", body);
             arguments.put("tone", generated.getOrDefault("tone", arguments.getOrDefault("tone", "professional")));
             return new PlannerActionPlan(plan.taskFamily(), plan.action(), plan.targetEntityType(), plan.targetEntityId(), plan.targetLookup(), arguments, false, null, plan.confidence());
         } catch (Exception exception) {
@@ -275,23 +363,28 @@ public class PlannerAgentService {
     private boolean requiresRewrite(PlannerActionPlan plan) {
         Map<String, Object> arguments = plan.arguments() == null ? Map.of() : plan.arguments();
         return !isBlank(stringArg(arguments, "rewriteInstruction"))
+                || !isBlank(stringArg(arguments, "rewrite"))
+                || "true".equalsIgnoreCase(stringArg(arguments, "makeItShorter"))
+                || "true".equalsIgnoreCase(stringArg(arguments, "shorten"))
                 || (isBlank(stringArg(arguments, "body")) && !isBlank(stringArg(arguments, "tone")));
     }
 
-    private String summarizeExecutionResult(PlannerExecutionResult result) {
+    private String renderExecutionResult(PlannerExecutionResult result) {
         if (result.emailDraft() != null) {
             return switch (result.appliedPlan().action()) {
-                case "create_email_draft", "update_email_draft" -> toJson(result.emailDraft());
-                case "schedule_email_draft" -> "Scheduled email \"%s\" for %s.".formatted(result.emailDraft().subject(), result.emailDraft().scheduledFor());
-                case "send_email_draft" -> "Sent email \"%s\" to %s.".formatted(result.emailDraft().subject(), result.emailDraft().recipient());
-                case "delete_email_draft" -> "Deleted email draft \"%s\".".formatted(result.emailDraft().subject());
+                case "create_email_draft" -> "Email draft created: subject \"%s\", recipient %s.".formatted(result.emailDraft().subject(), result.emailDraft().recipient());
+                case "update_email_draft" -> "Email draft updated: subject \"%s\", recipient %s.".formatted(result.emailDraft().subject(), result.emailDraft().recipient());
+                case "schedule_email_draft" -> "Email draft scheduled: subject \"%s\", scheduled for %s.".formatted(result.emailDraft().subject(), result.emailDraft().scheduledFor());
+                case "send_email_draft" -> "Email draft sent: subject \"%s\", recipient %s.".formatted(result.emailDraft().subject(), result.emailDraft().recipient());
+                case "delete_email_draft" -> "Email draft deleted: subject \"%s\".".formatted(result.emailDraft().subject());
                 default -> result.message();
             };
         }
         if (result.calendarItem() != null) {
             return switch (result.appliedPlan().action()) {
-                case "create_calendar_item", "update_calendar_item" -> "%s: %s on %s at %s.".formatted(
+                case "create_calendar_item", "update_calendar_item" -> "%s: %s \"%s\" on %s at %s.".formatted(
                         "create_calendar_item".equals(result.appliedPlan().action()) ? "Calendar item created" : "Calendar item updated",
+                        result.calendarItem().itemType(),
                         result.calendarItem().title(),
                         result.calendarItem().date(),
                         result.calendarItem().time());
@@ -315,22 +408,8 @@ public class PlannerAgentService {
     }
 
     private String finalizeAnswer(String query, List<ConversationTurn> history, String draftAnswer, List<ToolTrace> traces) {
-        String prompt = "Conversation history:\n" + formatHistory(history)
-                + "\nUser request: " + query
-                + "\nBackend result: " + draftAnswer
-                + "\nReturn a concise user-facing answer.";
-        String answer;
-        try {
-            answer = ollamaClient.generate(prompt);
-            if (isBlank(answer) || looksLikeJson(answer)) {
-                answer = draftAnswer;
-            }
-            addTrace(traces, "FinalAnswerGeneration", prompt, answer, true, 0);
-        } catch (Exception exception) {
-            answer = draftAnswer;
-            addTrace(traces, "FinalAnswerGeneration", prompt, exception.getMessage(), false, 0);
-        }
-        return answer;
+        addTrace(traces, "FinalAnswerGeneration", query, draftAnswer, true, 0);
+        return draftAnswer;
     }
 
     private String respondChat(String query, List<ConversationTurn> history, List<ToolTrace> traces) {
@@ -364,7 +443,16 @@ public class PlannerAgentService {
     }
 
     String detectTaskFamily(String lower, List<ConversationTurn> history) {
-        boolean metadata = METADATA_PATTERN.matcher(lower).find() || UUID_PATTERN.matcher(lower).find();
+        return detectTaskFamily(lower, history, null);
+    }
+
+    String detectTaskFamily(String lower, List<ConversationTurn> history, PendingClarification pendingClarification) {
+        if (pendingClarification != null && !isBlank(pendingClarification.taskFamily())
+                && (lower.length() <= 80 || FOLLOW_UP_PATTERN.matcher(lower).find() || looksLikeNameOnlyResponse(lower, history))) {
+            return pendingClarification.taskFamily();
+        }
+        boolean metadataWord = METADATA_PATTERN.matcher(lower).find();
+        boolean uuidPresent = UUID_PATTERN.matcher(lower).find();
         boolean hardware = HARDWARE_PATTERN.matcher(lower).find();
         boolean rag = RAG_PATTERN.matcher(lower).find();
         boolean email = EMAIL_PATTERN.matcher(lower).find();
@@ -373,8 +461,12 @@ public class PlannerAgentService {
         boolean calendarAction = CALENDAR_ACTION_PATTERN.matcher(lower).find();
         boolean strongEmailIntent = STRONG_EMAIL_INTENT_PATTERN.matcher(lower).find();
         boolean strongCalendarIntent = STRONG_CALENDAR_INTENT_PATTERN.matcher(lower).find();
+        boolean draftReferenceIntent = EMAIL_DRAFT_REFERENCE_PATTERN.matcher(lower).find();
         boolean ragAction = RAG_ACTION_PATTERN.matcher(lower).find();
         boolean eventLike = EVENT_TIME_PATTERN.matcher(lower).find() && EVENT_PARTICIPANT_PATTERN.matcher(lower).find();
+        boolean calendarContinuation = isCalendarContinuation(lower, history);
+        boolean emailContinuation = isEmailContinuation(lower, history);
+        boolean metadata = metadataWord || (uuidPresent && !emailAction && !calendarAction && !emailContinuation && !calendarContinuation);
 
         if (metadata) {
             return "metadata";
@@ -386,6 +478,9 @@ public class PlannerAgentService {
             return "rag";
         }
         if (emailAction && calendarAction) {
+            if (draftReferenceIntent || emailContinuation) {
+                return "email";
+            }
             if (strongEmailIntent && !strongCalendarIntent) {
                 return "email";
             }
@@ -421,10 +516,10 @@ public class PlannerAgentService {
         if (rag) {
             return "rag";
         }
-        if (isCalendarContinuation(lower, history)) {
+        if (calendarContinuation) {
             return "calendar";
         }
-        if (isEmailContinuation(lower, history)) {
+        if (emailContinuation) {
             return "email";
         }
         if (isGeneralChatPrompt(lower)) {
@@ -601,7 +696,9 @@ public class PlannerAgentService {
 
     private boolean isEmailContinuation(String lower, List<ConversationTurn> history) {
         return !isBlank(lower)
-                && EMAIL_FOLLOW_UP_PATTERN.matcher(lower).find()
+                && (EMAIL_FOLLOW_UP_PATTERN.matcher(lower).find()
+                || TIME_ONLY_FOLLOW_UP_PATTERN.matcher(lower.trim()).matches()
+                || looksLikeNameOnlyResponse(lower, history))
                 && recentHistoryContains(history, "email");
     }
 
@@ -619,7 +716,7 @@ public class PlannerAgentService {
             if ("calendar".equals(family) && (content.contains("calendar") || content.contains("task") || content.contains("reminder") || content.contains("meeting"))) {
                 return true;
             }
-            if ("email".equals(family) && (content.contains("email") || content.contains("draft") || content.contains("@"))) {
+            if ("email".equals(family) && (content.contains("email") || content.contains("draft") || content.contains("@") || content.contains("sender"))) {
                 return true;
             }
         }
@@ -628,6 +725,156 @@ public class PlannerAgentService {
 
     private boolean looksGenericSender(String value) {
         return !isBlank(value) && GENERIC_SENDER_PATTERN.matcher(value.trim()).matches();
+    }
+
+    private boolean looksLikeNameOnlyResponse(String lower, List<ConversationTurn> history) {
+        if (isBlank(lower) || history == null || history.isEmpty()) {
+            return false;
+        }
+        if (!NAME_ONLY_PATTERN.matcher(toTitleCase(lower.trim())).matches()) {
+            return false;
+        }
+        ConversationTurn last = history.getLast();
+        return last != null
+                && !isBlank(last.content())
+                && last.content().toLowerCase(Locale.ROOT).contains("sender");
+    }
+
+    private PlannerActionPlan heuristicFallbackPlan(String query, List<ConversationTurn> history, String family) {
+        if ("email".equalsIgnoreCase(family)) {
+            String recipient = extractTitleReference("titled \"" + extractQuotedText(query) + "\"");
+            String sender = firstNonBlank(inferSenderName(query, history), extractStandaloneName(query));
+            String recipientName = extractNamedRecipient(query);
+            if (recipientName == null) {
+                return null;
+            }
+            Map<String, Object> arguments = new LinkedHashMap<>();
+            if (!isBlank(sender)) {
+                arguments.put("senderName", sender);
+            }
+            return new PlannerActionPlan("email", "create_email_draft", "email", null,
+                    new PlannerLookup(null, recipientName, null, extractSubjectHint(query), null, null, null, null, null),
+                    arguments, isBlank(sender), isBlank(sender) ? "Who should the sender be for that email?" : null, 0.5);
+        }
+        if ("calendar".equalsIgnoreCase(family)) {
+            String title = firstNonBlank(extractQuotedText(query), extractTitleReference(query));
+            String date = inferRelativeDate(query);
+            String time = inferTime(query);
+            Map<String, Object> arguments = new LinkedHashMap<>();
+            putIfNotBlank(arguments, "title", title);
+            putIfNotBlank(arguments, "date", date);
+            putIfNotBlank(arguments, "time", time);
+            return new PlannerActionPlan("calendar", "create_calendar_item", "calendarItem", null,
+                    new PlannerLookup(null, null, null, title, extractParticipantName(query), date, time, null, null),
+                    arguments, false, null, 0.5);
+        }
+        return null;
+    }
+
+    private void putIfNotBlank(Map<String, Object> arguments, String key, String value) {
+        if (!isBlank(value)) {
+            arguments.put(key, value);
+        }
+    }
+
+    private String extractQuotedText(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        Matcher matcher = QUOTED_TEXT_PATTERN.matcher(query);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private String extractTitleReference(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        Matcher matcher = TITLE_REFERENCE_PATTERN.matcher(query);
+        if (!matcher.find()) {
+            return null;
+        }
+        return firstNonBlank(matcher.group(1), matcher.group(2));
+    }
+
+    private String inferRelativeDate(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        if (TOMORROW_PATTERN.matcher(query).find()) {
+            return LocalDate.now().plusDays(1).toString();
+        }
+        if (TODAY_PATTERN.matcher(query).find()) {
+            return LocalDate.now().toString();
+        }
+        return null;
+    }
+
+    private String inferTime(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        Matcher matcher = TIME_PATTERN.matcher(query);
+        if (!matcher.find()) {
+            return null;
+        }
+        int hour = Integer.parseInt(matcher.group(1));
+        int minute = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
+        String meridiem = matcher.group(3);
+        if (meridiem != null) {
+            meridiem = meridiem.toLowerCase(Locale.ROOT);
+            if ("pm".equals(meridiem) && hour < 12) {
+                hour += 12;
+            } else if ("am".equals(meridiem) && hour == 12) {
+                hour = 0;
+            }
+        }
+        return "%02d:%02d".formatted(hour, minute);
+    }
+
+    private String extractNamedRecipient(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        Matcher matcher = Pattern.compile("\\bto\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)", Pattern.CASE_INSENSITIVE).matcher(query);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private String extractParticipantName(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        Matcher matcher = EVENT_PARTICIPANT_PATTERN.matcher(query);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group().replaceFirst("(?i)^with\\s+", "").trim();
+    }
+
+    private String extractSubjectHint(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        if (query.toLowerCase(Locale.ROOT).contains("check-in")) {
+            return "check-in";
+        }
+        return extractQuotedText(query);
+    }
+
+    private String extractStandaloneName(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        String normalized = toTitleCase(query.trim());
+        return NAME_ONLY_PATTERN.matcher(normalized).matches() ? normalized.replace(".", "").trim() : null;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private String inferSenderName(String query, List<ConversationTurn> history) {
@@ -653,6 +900,10 @@ public class PlannerAgentService {
         if (isBlank(text)) {
             return Optional.empty();
         }
+        var parenMatcher = PAREN_SENDER_PATTERN.matcher(text);
+        if (parenMatcher.find()) {
+            return Optional.ofNullable(parenMatcher.group(1)).map(String::trim).filter(name -> !name.isBlank());
+        }
         var matcher = EXPLICIT_SENDER_PATTERN.matcher(text);
         if (!matcher.find()) {
             return Optional.empty();
@@ -660,9 +911,198 @@ public class PlannerAgentService {
         return Optional.ofNullable(matcher.group(1)).map(String::trim).filter(name -> !name.isBlank());
     }
 
+    private PlannerActionPlan continuePendingClarification(String query, List<ConversationTurn> history, PendingClarification pendingClarification, List<ToolTrace> traces) {
+        if (pendingClarification == null || pendingClarification.plan() == null) {
+            return null;
+        }
+        PlannerActionPlan plan = pendingClarification.plan();
+        Map<String, Object> arguments = new LinkedHashMap<>(plan.arguments() == null ? Map.of() : plan.arguments());
+        if ("email".equalsIgnoreCase(plan.taskFamily())) {
+            String senderName = firstNonBlank(extractStandaloneName(query), inferSenderName(query, history));
+            if (!isBlank(senderName)) {
+                arguments.put("senderName", senderName);
+                PlannerActionPlan continued = new PlannerActionPlan(plan.taskFamily(), plan.action(), plan.targetEntityType(), plan.targetEntityId(), plan.targetLookup(), arguments, false, null, plan.confidence());
+                addTrace(traces, "PendingClarificationContinuation", query, toJson(continued), true, 0);
+                return continued;
+            }
+        }
+        if ("calendar".equalsIgnoreCase(plan.taskFamily())) {
+            PlannerLookup lookup = plan.targetLookup();
+            PlannerLookup mergedLookup = new PlannerLookup(
+                    firstNonBlank(lookup == null ? null : lookup.referenceText(), query),
+                    lookup == null ? null : lookup.recipientName(),
+                    lookup == null ? null : lookup.recipientEmail(),
+                    firstNonBlank(extractTitleReference(query), extractQuotedText(query), lookup == null ? null : lookup.titleLike()),
+                    firstNonBlank(extractParticipantName(query), lookup == null ? null : lookup.participantName()),
+                    firstNonBlank(inferRelativeDate(query), lookup == null ? null : lookup.date()),
+                    firstNonBlank(inferTime(query), lookup == null ? null : lookup.time()),
+                    firstNonBlank(inferItemType(query), lookup == null ? null : lookup.itemType()),
+                    lookup == null ? null : lookup.draftReference()
+            );
+            PlannerActionPlan continued = new PlannerActionPlan(plan.taskFamily(), plan.action(), plan.targetEntityType(), plan.targetEntityId(), mergedLookup, arguments, false, null, plan.confidence());
+            addTrace(traces, "PendingClarificationContinuation", query, toJson(continued), true, 0);
+            return continued;
+        }
+        return null;
+    }
+
+    private PlannerActionPlan normalizePlannerPlan(Map<String, Object> raw, String query, String family) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        Object lookupValue = raw.get("targetLookup");
+        PlannerLookup lookup = null;
+        if (lookupValue instanceof Map<?, ?> lookupMap) {
+            lookup = objectMapper.convertValue(lookupMap, PlannerLookup.class);
+        } else if (lookupValue instanceof String lookupMarker && !lookupMarker.isBlank()) {
+            lookup = normalizeLookupMarker(lookupMarker, raw, query);
+        } else if (lookupValue != null) {
+            return null;
+        }
+
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        if (raw.get("arguments") instanceof Map<?, ?> argumentMap) {
+            argumentMap.forEach((key, value) -> arguments.put(String.valueOf(key), value));
+        }
+        normalizePlannerArguments(arguments, lookup, query);
+        return new PlannerActionPlan(
+                firstNonBlank(objectAsString(raw.get("taskFamily")), family),
+                objectAsString(raw.get("action")),
+                objectAsString(raw.get("targetEntityType")),
+                objectAsString(raw.get("targetEntityId")),
+                lookup,
+                arguments,
+                truthy(raw.get("needsClarification")),
+                objectAsString(raw.get("clarificationQuestion")),
+                raw.get("confidence") instanceof Number number ? number.doubleValue() : 0.0
+        );
+    }
+
+    private PlannerLookup normalizeLookupMarker(String lookupMarker, Map<String, Object> raw, String query) {
+        String targetEntityId = objectAsString(raw.get("targetEntityId"));
+        return switch (lookupMarker) {
+            case "titleLike" -> new PlannerLookup(query, null, null, firstNonBlank(extractTitleReference(query), extractQuotedText(query)), extractParticipantName(query), inferRelativeDate(query), inferTime(query), inferItemType(query), null);
+            case "draftReference" -> new PlannerLookup(query, null, null, extractSubjectHint(query), null, null, null, null, targetEntityId);
+            case "itemType" -> new PlannerLookup(query, null, null, extractTitleReference(query), extractParticipantName(query), inferRelativeDate(query), inferTime(query), inferItemType(query), null);
+            default -> new PlannerLookup(query, null, null, extractTitleReference(query), extractParticipantName(query), inferRelativeDate(query), inferTime(query), inferItemType(query), targetEntityId);
+        };
+    }
+
+    private void normalizePlannerArguments(Map<String, Object> arguments, PlannerLookup lookup, String query) {
+        putIfNotBlank(arguments, "itemType", firstNonBlank(stringArg(arguments, "itemType"), stringArg(arguments, "taskType"), inferItemType(query), lookup == null ? null : lookup.itemType()));
+        putIfNotBlank(arguments, "title", firstNonBlank(stringArg(arguments, "title"), stringArg(arguments, "summary"), extractTitleReference(query), extractQuotedText(query), lookup == null ? null : lookup.titleLike()));
+        if (isBlank(stringArg(arguments, "date"))) {
+            putIfNotBlank(arguments, "date", firstNonBlank(extractDatePart(stringArg(arguments, "dateTime")), extractDatePart(stringArg(arguments, "startTime")), extractDatePart(stringArg(arguments, "startDate")), inferRelativeDate(query), lookup == null ? null : lookup.date()));
+        }
+        if (isBlank(stringArg(arguments, "time"))) {
+            putIfNotBlank(arguments, "time", firstNonBlank(extractTimePart(stringArg(arguments, "dateTime")), extractTimePart(stringArg(arguments, "startTime")), extractTimePart(stringArg(arguments, "startDate")), inferTime(query), lookup == null ? null : lookup.time()));
+        }
+        if (isBlank(stringArg(arguments, "rewriteInstruction"))) {
+            if (truthy(arguments.get("makeItShorter")) || truthy(arguments.get("shorten")) || contains(query, "shorter")) {
+                arguments.put("rewriteInstruction", "make it shorter");
+            } else {
+                putIfNotBlank(arguments, "rewriteInstruction", firstNonBlank(stringArg(arguments, "rewriteInstruction"), stringArg(arguments, "rewrite")));
+            }
+        }
+    }
+
+    private String inferItemType(String query) {
+        if (isBlank(query)) {
+            return null;
+        }
+        String lower = query.toLowerCase(Locale.ROOT);
+        if (lower.contains("reminder")) {
+            return "REMINDER";
+        }
+        if (lower.contains(" task")) {
+            return "TASK";
+        }
+        if (lower.contains("meeting") || lower.contains("event")) {
+            return "MEETING";
+        }
+        return null;
+    }
+
+    private String extractDatePart(String value) {
+        if (isBlank(value) || !value.contains("T")) {
+            return null;
+        }
+        return value.substring(0, value.indexOf('T'));
+    }
+
+    private String extractTimePart(String value) {
+        if (isBlank(value) || !value.contains("T")) {
+            return null;
+        }
+        String time = value.substring(value.indexOf('T') + 1);
+        return time.length() >= 5 ? time.substring(0, 5) : time;
+    }
+
+    private boolean isValidGeneratedEmail(String subject, String body, String query, List<ConversationTurn> history, EmailDraftRecord existingDraft) {
+        if (isBlank(subject) || isBlank(body)) {
+            return false;
+        }
+        String combined = subject + "\n" + body;
+        if (PLACEHOLDER_PATTERN.matcher(combined).find()) {
+            return false;
+        }
+        String context = query + "\n" + formatHistory(history) + "\n" + (existingDraft == null ? "" : existingDraft.subject() + "\n" + existingDraft.body());
+        boolean scheduleProvided = TIME_PATTERN.matcher(context).find() || TODAY_PATTERN.matcher(context).find() || TOMORROW_PATTERN.matcher(context).find();
+        if (!scheduleProvided && TIME_PATTERN.matcher(combined).find()) {
+            return false;
+        }
+        return !PLATFORM_PATTERN.matcher(combined).find();
+    }
+
+    private String sanitizeGeneratedEmailBody(String body) {
+        if (isBlank(body)) {
+            return body;
+        }
+        return body
+                .replaceAll("(?i)^\\s*(hi|hello)\\s+[^,]+,\\s*", "")
+                .replaceAll("(?is)\\n*(best regards|regards|best),?\\s*\\n.*$", "")
+                .trim();
+    }
+
+    private String objectAsString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private boolean truthy(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && "true".equalsIgnoreCase(String.valueOf(value));
+    }
+
+    private String toTitleCase(String value) {
+        if (isBlank(value)) {
+            return value;
+        }
+        String[] parts = value.replace(".", "").trim().split("\\s+");
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return builder.toString();
+    }
+
+    private AgentQueryResponse respond(String result, List<ToolTrace> traces, int iterations, String status, PlannerActionPlan normalizedPlan, PlannerExecutionResult executionResult, PendingClarification pendingClarification) {
+        return new AgentQueryResponse(result, traces, iterations, status, normalizedPlan, executionResult, pendingClarification);
+    }
+
     @FunctionalInterface
     private interface ToolCall<T> {
         T execute();
+    }
+
+    private record ExecutionEnvelope(String result, String status, PlannerExecutionResult executionResult, PendingClarification pendingClarification) {
     }
 
     private record ContextSelection(String mode, List<ConversationTurn> history) {

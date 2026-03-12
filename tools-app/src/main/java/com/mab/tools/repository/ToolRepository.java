@@ -341,16 +341,15 @@ public class ToolRepository {
             return List.of();
         }
         StringBuilder sql = new StringBuilder("select id::text, name, email, created_at::text from contacts where ");
-        Object[] params = new Object[normalized.size() * 3];
+        Object[] params = new Object[normalized.size() * 2];
         for (int i = 0; i < normalized.size(); i++) {
             if (i > 0) {
                 sql.append(" or ");
             }
-            sql.append("(lower(name) = ? or split_part(lower(name), ' ', 1) = ? or lower(name) like ?)");
+            sql.append("(lower(name) = ? or split_part(lower(name), ' ', 1) = ?)");
             String term = normalized.get(i);
-            params[i * 3] = term;
-            params[i * 3 + 1] = term;
-            params[i * 3 + 2] = "%" + term + "%";
+            params[i * 2] = term;
+            params[i * 2 + 1] = term;
         }
         sql.append(" order by name asc");
         return jdbcTemplate.query(
@@ -376,6 +375,20 @@ public class ToolRepository {
         return jdbcTemplate.queryForObject(
                 "select id::text from app_state order by created_at asc limit 1",
                 String.class
+        );
+    }
+
+    public String activeGenerationModel() {
+        return jdbcTemplate.query(
+                "select coalesce(active_generation_model, '') from app_state order by created_at asc limit 1",
+                rs -> rs.next() ? rs.getString(1) : ""
+        );
+    }
+
+    public void updateActiveGenerationModel(String model) {
+        jdbcTemplate.update(
+                "update app_state set active_generation_model = ? where id = (select id from app_state order by created_at asc limit 1)",
+                nullableTrim(model)
         );
     }
 

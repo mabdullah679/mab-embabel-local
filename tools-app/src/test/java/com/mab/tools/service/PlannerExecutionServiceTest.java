@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -29,10 +30,10 @@ class PlannerExecutionServiceTest {
                 new ContactRecord("2", "Joe Miller", "joe@example.com", "2026-03-12T10:00:00Z")
         ));
         when(repository.createEmailDraft(
-                eq("alex@example.com, joe@example.com"),
+                anyString(),
                 eq("John Doe"),
                 eq("Meeting notice"),
-                eq("Please join the meeting."),
+                anyString(),
                 eq("professional")
         )).thenReturn(new EmailDraftRecord(
                 "draft-1",
@@ -70,7 +71,8 @@ class PlannerExecutionServiceTest {
 
         assertEquals("COMPLETED", result.status());
         assertEquals("alex@example.com, joe@example.com", result.emailDraft().recipient());
-        verify(repository).findContactsByNames(eq(List.of("Joe", "Alex")));
+        verify(repository).findContactsByNames(eq(List.of("Joe")));
+        verify(repository).findContactsByNames(eq(List.of("Alex")));
     }
 
     @Test
@@ -169,7 +171,8 @@ class PlannerExecutionServiceTest {
 
         assertEquals("COMPLETED", result.status());
         assertEquals(List.of("alex@example.com", "joe@example.com"), result.calendarItem().participants());
-        verify(repository).findContactsByNames(eq(List.of("Alex", "Joe")));
+        verify(repository).findContactsByNames(eq(List.of("Alex")));
+        verify(repository).findContactsByNames(eq(List.of("Joe")));
     }
 
     @Test

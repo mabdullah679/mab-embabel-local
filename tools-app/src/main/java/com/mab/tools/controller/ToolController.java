@@ -10,6 +10,7 @@ import com.mab.shared.model.EmailDraftRecord;
 import com.mab.shared.model.EmailDraftScheduleRequest;
 import com.mab.shared.model.EmailDraftUpdateRequest;
 import com.mab.shared.model.EmailDraftsResponse;
+import com.mab.shared.model.ModelSelectionRequest;
 import com.mab.shared.model.PlannerActionPlan;
 import com.mab.shared.model.PlannerExecutionResult;
 import com.mab.shared.model.RagIngestRequest;
@@ -96,6 +97,11 @@ public class ToolController {
     @GetMapping("/state")
     public SystemStateResponse systemState() {
         return toolsService.systemState();
+    }
+
+    @PutMapping("/state/model")
+    public SystemStateResponse selectGenerationModel(@RequestBody @Valid ModelSelectionRequest request) {
+        return toolsService.selectGenerationModel(request);
     }
 
     @PostMapping("/planner/execute")

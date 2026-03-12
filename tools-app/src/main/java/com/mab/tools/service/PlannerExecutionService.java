@@ -15,6 +15,8 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -26,7 +28,7 @@ public class PlannerExecutionService {
     private static final Pattern EMAIL_ADDRESS_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final Pattern LIST_SPLIT_PATTERN = Pattern.compile("\\s*(?:,|;|\\band\\b|\\bwith\\b|&|\\n)\\s*", Pattern.CASE_INSENSITIVE);
     private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    private static final Pattern GENERIC_SENDER_PATTERN = Pattern.compile("^(your name|\\[your name\\]|sender|the sender|from me|me)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern GENERIC_SENDER_PATTERN = Pattern.compile("^(your name|\\[your name\\]|sender|the sender|from me|me|the contacts?|contacts?)$", Pattern.CASE_INSENSITIVE);
 
     private final ToolRepository repository;
 
@@ -60,9 +62,12 @@ public class PlannerExecutionService {
 
     private PlannerExecutionResult createEmailDraft(PlannerActionPlan plan) {
         Map<String, Object> arguments = normalizedArguments(plan);
-        List<String> recipients = resolveRecipients(plan, arguments);
-        if (recipients.isEmpty()) {
-            return clarification("Which recipient should I use for that email?", plan, List.of());
+        ContactResolution recipients = resolveRecipients(plan, arguments);
+        if (recipients.ambiguous()) {
+            return clarification("I found multiple matching recipients. Please specify which contact to use.", plan, List.of(), recipients.summaries());
+        }
+        if (recipients.emails().isEmpty()) {
+            return clarification("Which recipient should I use for that email?", plan, List.of(), List.of());
         }
 
         String subject = text(arguments, "subject");
@@ -76,7 +81,7 @@ public class PlannerExecutionService {
         }
 
         EmailDraftRecord created = repository.createEmailDraft(
-                String.join(", ", recipients),
+                String.join(", ", recipients.emails()),
                 senderName,
                 subject.trim(),
                 normalizeBody(body),
@@ -100,8 +105,11 @@ public class PlannerExecutionService {
         }
 
         Map<String, Object> arguments = normalizedArguments(plan);
-        List<String> recipients = resolveRecipients(plan, arguments);
-        String nextRecipient = recipients.isEmpty() ? current.recipient() : String.join(", ", recipients);
+        ContactResolution recipients = resolveRecipients(plan, arguments);
+        if (recipients.ambiguous()) {
+            return clarification("I found multiple matching recipients. Please specify which contact to use.", plan, ids(matches), recipients.summaries());
+        }
+        String nextRecipient = recipients.emails().isEmpty() ? current.recipient() : String.join(", ", recipients.emails());
         String nextSenderName = coalesce(normalizedSenderName(text(arguments, "senderName")), current.senderName());
         String nextSubject = coalesce(text(arguments, "subject"), current.subject());
         String nextBody = coalesce(text(arguments, "body"), current.body());
@@ -179,7 +187,7 @@ public class PlannerExecutionService {
 
         EmailDraftRecord current = matches.getFirst();
         repository.deleteEmailDraft(current.id());
-        return new PlannerExecutionResult("COMPLETED", "Email draft deleted.", false, null, null, plan, current, null, List.of(current.id()));
+        return new PlannerExecutionResult("COMPLETED", "Email draft deleted.", false, null, null, plan, current, null, List.of(current.id()), List.of("%s -> %s".formatted(current.subject(), current.recipient())));
     }
 
     private PlannerExecutionResult createCalendarItem(PlannerActionPlan plan) {
@@ -194,12 +202,15 @@ public class PlannerExecutionService {
             return validationError("Calendar date/time values are invalid.", plan);
         }
 
-        List<String> participants = resolveParticipants(plan, arguments);
+        ContactResolution participants = resolveParticipants(plan, arguments);
+        if (participants.ambiguous()) {
+            return clarification("I found multiple matching participants. Please specify which contact to use.", plan, List.of(), participants.summaries());
+        }
         String eventId = repository.createEvent(
                 title.trim(),
                 date.trim(),
                 time.trim(),
-                participants,
+                participants.emails(),
                 normalizeItemType(coalesce(text(arguments, "itemType"), plan.targetLookup() == null ? null : plan.targetLookup().itemType())),
                 coalesce(text(arguments, "notes"), "")
         );
@@ -223,13 +234,16 @@ public class PlannerExecutionService {
             return validationError("Calendar date/time values are invalid.", plan);
         }
 
-        List<String> participants = resolveParticipants(plan, arguments);
+        ContactResolution participants = resolveParticipants(plan, arguments);
+        if (participants.ambiguous()) {
+            return clarification("I found multiple matching participants. Please specify which contact to use.", plan, ids(matches), participants.summaries());
+        }
         CalendarItemRecord updated = repository.updateCalendarItem(
                 current.id(),
                 coalesce(text(arguments, "title"), current.title()),
                 nextDate,
                 nextTime,
-                participants.isEmpty() ? current.participants() : participants,
+                participants.emails().isEmpty() ? current.participants() : participants.emails(),
                 normalizeItemType(coalesce(text(arguments, "itemType"), current.itemType())),
                 coalesce(text(arguments, "notes"), current.notes())
         );
@@ -247,7 +261,7 @@ public class PlannerExecutionService {
 
         CalendarItemRecord current = matches.getFirst();
         repository.deleteCalendarItem(current.id());
-        return new PlannerExecutionResult("COMPLETED", "Calendar item deleted.", false, null, null, plan, null, current, List.of(current.id()));
+        return new PlannerExecutionResult("COMPLETED", "Calendar item deleted.", false, null, null, plan, null, current, List.of(current.id()), List.of("%s on %s at %s".formatted(current.title(), current.date(), current.time())));
     }
 
     private List<EmailDraftRecord> matchEmailDrafts(PlannerActionPlan plan) {
@@ -259,16 +273,19 @@ public class PlannerExecutionService {
             }
         }
         PlannerLookup lookup = plan.targetLookup();
-        if (lookup == null) {
+        String reference = isBlank(plan.targetEntityId()) || isUuid(plan.targetEntityId()) ? null : plan.targetEntityId();
+        if (lookup == null && isBlank(reference)) {
             return List.of();
         }
         return drafts.stream()
-                .filter(draft -> contains(draft.subject(), lookup.titleLike())
-                        || contains(draft.subject(), lookup.referenceText())
-                        || contains(draft.body(), lookup.referenceText())
-                        || contains(draft.recipient(), lookup.recipientEmail())
-                        || recipientMatchesName(draft, lookup.recipientName())
-                        || contains(draft.recipient(), lookup.referenceText()))
+                .filter(draft -> contains(draft.subject(), lookup == null ? null : lookup.titleLike())
+                        || contains(draft.subject(), lookup == null ? null : lookup.referenceText())
+                        || contains(draft.body(), lookup == null ? null : lookup.referenceText())
+                        || contains(draft.recipient(), lookup == null ? null : lookup.recipientEmail())
+                        || recipientMatchesName(draft, lookup == null ? null : lookup.recipientName())
+                        || contains(draft.recipient(), lookup == null ? null : lookup.referenceText())
+                        || contains(draft.subject(), reference)
+                        || contains(draft.body(), reference))
                 .toList();
     }
 
@@ -281,17 +298,51 @@ public class PlannerExecutionService {
             }
         }
         PlannerLookup lookup = plan.targetLookup();
-        if (lookup == null) {
+        String reference = isBlank(plan.targetEntityId()) || isUuid(plan.targetEntityId()) ? null : plan.targetEntityId();
+        if (lookup == null && isBlank(reference)) {
             return List.of();
         }
-        return items.stream()
-                .filter(item -> contains(item.title(), lookup.titleLike())
-                        || contains(item.title(), lookup.referenceText())
-                        || matchesParticipant(item, lookup.participantName())
-                        || equalsIgnoreCase(item.date(), lookup.date())
-                        || timeMatches(item.time(), lookup.time()))
-                .filter(item -> isBlank(lookup.itemType()) || equalsIgnoreCase(item.itemType(), lookup.itemType()))
+        List<ScoredCalendarMatch> matches = items.stream()
+                .map(item -> scoreCalendarItem(item, lookup, reference))
+                .filter(match -> match.score() > 0)
+                .sorted(Comparator.comparingInt(ScoredCalendarMatch::score).reversed())
                 .toList();
+        if (matches.isEmpty()) {
+            return List.of();
+        }
+        int topScore = matches.getFirst().score();
+        return matches.stream()
+                .filter(match -> match.score() == topScore)
+                .map(ScoredCalendarMatch::item)
+                .toList();
+    }
+
+    private ScoredCalendarMatch scoreCalendarItem(CalendarItemRecord item, PlannerLookup lookup, String reference) {
+        int score = 0;
+        if (!isBlank(reference) && contains(item.title(), reference)) {
+            score += 3;
+        }
+        if (lookup != null) {
+            if (contains(item.title(), lookup.titleLike())) {
+                score += 4;
+            }
+            if (contains(item.title(), lookup.referenceText())) {
+                score += 3;
+            }
+            if (matchesParticipant(item, lookup.participantName())) {
+                score += 2;
+            }
+            if (equalsIgnoreCase(item.date(), lookup.date())) {
+                score += 2;
+            }
+            if (timeMatches(item.time(), lookup.time())) {
+                score += 2;
+            }
+            if (!isBlank(lookup.itemType()) && equalsIgnoreCase(item.itemType(), lookup.itemType())) {
+                score += 1;
+            }
+        }
+        return new ScoredCalendarMatch(item, score);
     }
 
     private boolean recipientMatchesName(EmailDraftRecord draft, String name) {
@@ -318,7 +369,7 @@ public class PlannerExecutionService {
         return item.participants().stream().anyMatch(email -> contains(email, participantName));
     }
 
-    private List<String> resolveRecipients(PlannerActionPlan plan, Map<String, Object> arguments) {
+    private ContactResolution resolveRecipients(PlannerActionPlan plan, Map<String, Object> arguments) {
         LinkedHashSet<String> recipients = new LinkedHashSet<>(normalizeEmails(stringList(arguments.get("recipientEmails"))));
         List<String> nameTerms = new ArrayList<>();
         collectRecipientTerms(text(arguments, "recipient"), recipients, nameTerms);
@@ -334,16 +385,12 @@ public class PlannerExecutionService {
         if (lookup != null && !isBlank(lookup.recipientName())) {
             nameTerms.addAll(expandNameTerms(List.of(lookup.recipientName())));
         }
-        if (!nameTerms.isEmpty()) {
-            repository.findContactsByNames(nameTerms).stream()
-                    .map(ContactRecord::email)
-                    .map(email -> email.trim().toLowerCase(Locale.ROOT))
-                    .forEach(recipients::add);
-        }
-        return List.copyOf(recipients);
+        ContactResolution resolved = resolveContactTerms(nameTerms);
+        recipients.addAll(resolved.emails());
+        return new ContactResolution(List.copyOf(recipients), resolved.summaries(), resolved.ambiguous());
     }
 
-    private List<String> resolveParticipants(PlannerActionPlan plan, Map<String, Object> arguments) {
+    private ContactResolution resolveParticipants(PlannerActionPlan plan, Map<String, Object> arguments) {
         List<String> rawParticipants = stringList(arguments.get("participants"));
         LinkedHashSet<String> participants = new LinkedHashSet<>(normalizeEmails(rawParticipants));
         List<String> nameTerms = new ArrayList<>();
@@ -352,13 +399,9 @@ public class PlannerExecutionService {
         if (lookup != null && !isBlank(lookup.participantName())) {
             nameTerms.addAll(expandNameTerms(List.of(lookup.participantName())));
         }
-        if (!nameTerms.isEmpty()) {
-            repository.findContactsByNames(nameTerms).stream()
-                    .map(ContactRecord::email)
-                    .map(email -> email.trim().toLowerCase(Locale.ROOT))
-                    .forEach(participants::add);
-        }
-        return List.copyOf(participants);
+        ContactResolution resolved = resolveContactTerms(nameTerms);
+        participants.addAll(resolved.emails());
+        return new ContactResolution(List.copyOf(participants), resolved.summaries(), resolved.ambiguous());
     }
 
     private Map<String, Object> arguments(PlannerActionPlan plan) {
@@ -408,6 +451,27 @@ public class PlannerExecutionService {
         }
         if (!normalized.containsKey("recipientEmails") && !isBlank(text(normalized, "recipientEmail"))) {
             normalized.put("recipientEmails", List.of(text(normalized, "recipientEmail")));
+        }
+        if (isBlank(text(normalized, "itemType"))) {
+            putIfPresent(normalized, "itemType", normalizeItemTypeHint(firstNonBlank(
+                    text(normalized, "taskType"),
+                    text(normalized, "type"),
+                    text(normalized, "targetEntityType"),
+                    lookup == null ? null : lookup.itemType()
+            )));
+        }
+        if (isBlank(text(normalized, "date"))) {
+            putIfPresent(normalized, "date", extractDate(text(normalized, "dateTime")));
+        }
+        if (isBlank(text(normalized, "time"))) {
+            putIfPresent(normalized, "time", extractTime(text(normalized, "dateTime")));
+        }
+        if (!normalized.containsKey("rewriteInstruction")) {
+            if (truthy(normalized.get("makeItShorter")) || truthy(normalized.get("shorten"))) {
+                normalized.put("rewriteInstruction", "make it shorter");
+            } else if (!isBlank(text(normalized, "rewrite"))) {
+                normalized.put("rewriteInstruction", text(normalized, "rewrite"));
+            }
         }
         return normalized;
     }
@@ -616,6 +680,23 @@ public class PlannerExecutionService {
         return isBlank(value) ? "MEETING" : value.trim().toUpperCase(Locale.ROOT);
     }
 
+    private String normalizeItemTypeHint(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("reminder")) {
+            return "REMINDER";
+        }
+        if (normalized.contains("task")) {
+            return "TASK";
+        }
+        if (normalized.contains("meeting") || normalized.contains("calendar")) {
+            return "MEETING";
+        }
+        return value.trim();
+    }
+
     private String coalesce(String value, String fallback) {
         return isBlank(value) ? fallback : value.trim();
     }
@@ -649,16 +730,74 @@ public class PlannerExecutionService {
         }).toList();
     }
 
+    private ContactResolution resolveContactTerms(List<String> nameTerms) {
+        if (nameTerms == null || nameTerms.isEmpty()) {
+            return new ContactResolution(List.of(), List.of(), false);
+        }
+        LinkedHashSet<String> emails = new LinkedHashSet<>();
+        LinkedHashSet<String> summaries = new LinkedHashSet<>();
+        boolean ambiguous = false;
+        for (String term : nameTerms) {
+            List<ContactRecord> matches = repository.findContactsByNames(List.of(term));
+            List<ContactRecord> exactMatches = matches.stream()
+                    .filter(contact -> normalizeNameKey(contact.name()).equals(normalizeNameKey(term))
+                            || firstName(contact.name()).equals(normalizeNameKey(term)))
+                    .toList();
+            List<ContactRecord> usable = exactMatches.isEmpty() ? matches : exactMatches;
+            if (usable.size() == 1) {
+                emails.add(usable.getFirst().email().trim().toLowerCase(Locale.ROOT));
+                continue;
+            }
+            if (usable.size() > 1) {
+                ambiguous = true;
+                usable.stream()
+                        .map(contact -> "%s <%s>".formatted(contact.name(), contact.email()))
+                        .forEach(summaries::add);
+            }
+        }
+        return new ContactResolution(List.copyOf(emails), List.copyOf(summaries), ambiguous);
+    }
+
+    private boolean truthy(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && "true".equalsIgnoreCase(String.valueOf(value).trim());
+    }
+
+    private String normalizeNameKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    private String firstName(String value) {
+        String normalized = normalizeNameKey(value);
+        int index = normalized.indexOf(' ');
+        return index >= 0 ? normalized.substring(0, index) : normalized;
+    }
+
     private PlannerExecutionResult clarification(String question, PlannerActionPlan plan, List<String> candidateIds) {
-        return new PlannerExecutionResult("CLARIFICATION", question, true, coalesce(question, "Please clarify the target."), null, plan, null, null, candidateIds);
+        return clarification(question, plan, candidateIds, List.of());
+    }
+
+    private PlannerExecutionResult clarification(String question, PlannerActionPlan plan, List<String> candidateIds, List<String> candidateSummaries) {
+        return new PlannerExecutionResult("CLARIFICATION", question, true, coalesce(question, "Please clarify the target."), null, plan, null, null, candidateIds, candidateSummaries);
     }
 
     private PlannerExecutionResult validationError(String message, PlannerActionPlan plan) {
-        return new PlannerExecutionResult("VALIDATION_ERROR", message, false, null, message, plan, null, null, List.of());
+        return new PlannerExecutionResult("VALIDATION_ERROR", message, false, null, message, plan, null, null, List.of(), List.of());
     }
 
     private PlannerExecutionResult completed(String message, PlannerActionPlan plan, EmailDraftRecord draft, CalendarItemRecord item) {
         List<String> candidateIds = draft != null ? List.of(draft.id()) : item != null ? List.of(item.id()) : List.of();
-        return new PlannerExecutionResult("COMPLETED", message, false, null, null, plan, draft, item, candidateIds);
+        List<String> candidateSummaries = draft != null
+                ? List.of("%s -> %s".formatted(draft.subject(), draft.recipient()))
+                : item != null ? List.of("%s on %s at %s".formatted(item.title(), item.date(), item.time())) : List.of();
+        return new PlannerExecutionResult("COMPLETED", message, false, null, null, plan, draft, item, candidateIds, candidateSummaries);
+    }
+
+    private record ContactResolution(List<String> emails, List<String> summaries, boolean ambiguous) {
+    }
+
+    private record ScoredCalendarMatch(CalendarItemRecord item, int score) {
     }
 }

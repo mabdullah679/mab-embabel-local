@@ -6,6 +6,7 @@ import java.util.List;
 
 public record AgentQueryRequest(
         @NotBlank String query,
-        List<ConversationTurn> history
+        List<ConversationTurn> history,
+        PendingClarification pendingClarification
 ) {
 }

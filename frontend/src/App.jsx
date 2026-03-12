@@ -51,11 +51,51 @@ function buildConversationHistory(messages) {
         return [{ role: 'user', content: message.query }];
       }
       if (message.role === 'assistant') {
-        return [{ role: 'assistant', content: String(message.result?.result ?? '') }];
+        return [{
+          role: 'assistant',
+          content: String(message.result?.result ?? ''),
+          pendingClarification: message.result?.pendingClarification || null
+        }];
       }
       return [];
     })
     .filter((turn) => turn.content && turn.content.trim().length > 0);
+}
+
+function latestPendingClarification(messages) {
+  for (let index = (messages || []).length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === 'assistant' && message?.result?.status === 'CLARIFICATION' && message?.result?.pendingClarification) {
+      return message.result.pendingClarification;
+    }
+  }
+  return null;
+}
+
+function messageOutcomeTone(result) {
+  switch (result?.status) {
+    case 'COMPLETED':
+      return 'success';
+    case 'CLARIFICATION':
+      return 'warning';
+    case 'VALIDATION_ERROR':
+      return 'error';
+    default:
+      return 'neutral';
+  }
+}
+
+function messageOutcomeLabel(result) {
+  switch (result?.status) {
+    case 'COMPLETED':
+      return 'Completed';
+    case 'CLARIFICATION':
+      return 'Clarification';
+    case 'VALIDATION_ERROR':
+      return 'Validation Error';
+    default:
+      return 'Assistant';
+  }
 }
 
 function parseEmailDraft(value) {
@@ -469,6 +509,8 @@ function App() {
   const [editingSessionName, setEditingSessionName] = useState('');
   const [stateNotice, setStateNotice] = useState('');
   const [systemState, setSystemState] = useState(null);
+  const [modelSelectionBusy, setModelSelectionBusy] = useState(false);
+  const [modelSelectionMessage, setModelSelectionMessage] = useState('');
   const [agentStatus, setAgentStatus] = useState({ tone: 'idle', text: 'Agent is ready.' });
   const abortRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -585,6 +627,7 @@ function App() {
       }
 
       setSystemState(stateBody);
+      setModelSelectionMessage('');
       setEmailDrafts(draftsBody.drafts || []);
       setCalendarItems(calendarBody.items || []);
       setContacts(contactsBody.contacts || []);
@@ -601,6 +644,33 @@ function App() {
     }
   }
 
+  async function changeGenerationModel(event) {
+    const nextModel = event.target.value;
+    if (!nextModel || nextModel === systemState?.activeGenerationModel) {
+      return;
+    }
+
+    setModelSelectionBusy(true);
+    setModelSelectionMessage('');
+    try {
+      const response = await fetch(`${TOOLS_URL}/api/state/model`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generationModel: nextModel })
+      });
+      if (!response.ok) {
+        throw new Error(`Model switch failed with HTTP ${response.status}`);
+      }
+      const stateBody = await response.json();
+      setSystemState(stateBody);
+      setModelSelectionMessage(`Model set to ${stateBody.activeGenerationModel}.`);
+    } catch (error) {
+      setModelSelectionMessage(error.message || 'Unable to switch models.');
+    } finally {
+      setModelSelectionBusy(false);
+    }
+  }
+
   async function runQuery() {
     const trimmed = query.trim();
     if (!trimmed || loading) {
@@ -609,6 +679,7 @@ function App() {
 
     const sessionBeforeSubmit = activeSession;
     const history = buildConversationHistory(sessionBeforeSubmit?.messages || []);
+    const pendingClarification = latestPendingClarification(sessionBeforeSubmit?.messages || []);
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -649,7 +720,7 @@ function App() {
       const response = await fetch(`${ORCHESTRATOR_URL}/agent/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed, history }),
+        body: JSON.stringify({ query: trimmed, history, pendingClarification }),
         signal: controller.signal
       });
       if (!response.ok) {
@@ -695,7 +766,7 @@ function App() {
         return;
       }
 
-      const result = { result: String(error), traces: [], iterations: 0 };
+      const result = { result: String(error), traces: [], iterations: 0, status: 'VALIDATION_ERROR' };
       setAgentStatus({ tone: 'error', text: `Agent failed: ${String(error)}` });
 
       setSessions((current) =>
@@ -1133,10 +1204,26 @@ function App() {
                 <h2>{activeSession.name}</h2>
                 {systemState?.generationModel && (
                   <p className="agent-model-meta">
-                    Model: <strong>{systemState.generationModel}</strong>
+                    Model: <strong>{systemState.activeGenerationModel || systemState.generationModel}</strong>
                     {systemState.modelAuthority ? ` via ${systemState.modelAuthority}` : ''}
                   </p>
                 )}
+                {!!systemState?.availableGenerationModels?.length && (
+                  <label className="model-selector">
+                    <span>Generation model</span>
+                    <select
+                      className="text-input"
+                      value={systemState.activeGenerationModel || systemState.generationModel}
+                      onChange={changeGenerationModel}
+                      disabled={modelSelectionBusy}
+                    >
+                      {systemState.availableGenerationModels.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {modelSelectionMessage && <p className="artifact-meta">{modelSelectionMessage}</p>}
               </div>
                 <p className="panel-copy">Conversations persist locally in this browser. The main assistant surface is focused on email and calendar workflows.</p>
             </div>
@@ -1167,10 +1254,34 @@ function App() {
                     <p className="message-text">{message.query}</p>
                   ) : (
                     <>
+                      <div className={`message-outcome outcome-${messageOutcomeTone(message.result)}`}>
+                        <strong>{messageOutcomeLabel(message.result)}</strong>
+                        {message.result?.executionResult?.candidateSummaries?.length > 0 && (
+                          <span>{message.result.executionResult.candidateSummaries.join(' | ')}</span>
+                        )}
+                      </div>
                       {parseEmailDraft(message.result?.result) ? (
                         <EmailDraftCard draft={message.result?.result} />
                       ) : (
                         <pre>{String(message.result?.result ?? '')}</pre>
+                      )}
+                      {message.result?.normalizedPlan && (
+                        <details className="trace-item">
+                          <summary className="trace-head">
+                            <strong>Normalized Plan</strong>
+                            <span>structured</span>
+                          </summary>
+                          <pre>{formatTracePayload(message.result.normalizedPlan)}</pre>
+                        </details>
+                      )}
+                      {message.result?.executionResult && (
+                        <details className="trace-item">
+                          <summary className="trace-head">
+                            <strong>Execution Result</strong>
+                            <span>{message.result.executionResult.status}</span>
+                          </summary>
+                          <pre>{formatTracePayload(message.result.executionResult)}</pre>
+                        </details>
                       )}
                       <div className="trace-list">
                         {(message.result?.traces || []).map((trace, index) => (

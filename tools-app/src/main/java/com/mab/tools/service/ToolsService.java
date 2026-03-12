@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class ToolsService {
@@ -274,13 +275,26 @@ public class ToolsService {
     }
 
     public SystemStateResponse systemState() {
+        List<String> availableModels = generationModels();
+        String activeModel = activeGenerationModel();
         return new SystemStateResponse(
                 repository.databaseId(),
                 generationModel,
+                activeModel,
+                availableModels,
                 fallbackModel,
                 embeddingModel,
                 MODEL_AUTHORITY
         );
+    }
+
+    public SystemStateResponse selectGenerationModel(ModelSelectionRequest request) {
+        String requested = request.generationModel().trim();
+        if (!generationModels().contains(requested)) {
+            throw new IllegalArgumentException("Model is not available for runtime selection: " + requested);
+        }
+        repository.updateActiveGenerationModel(requested);
+        return systemState();
     }
 
     List<String> chunkContent(String content) {
@@ -530,7 +544,7 @@ public class ToolsService {
     @SuppressWarnings("unchecked")
     private String generate(String prompt) {
         RuntimeException lastFailure = null;
-        for (String model : generationModels()) {
+        for (String model : orderedGenerationModels()) {
             Map<String, Object> payload = Map.of(
                     "model", model,
                     "prompt", prompt,
@@ -563,10 +577,30 @@ public class ToolsService {
         if (generationModel == null || generationModel.isBlank()) {
             throw new IllegalStateException("ollama.generation-model must be configured by deployment");
         }
-        if (fallbackModel == null || fallbackModel.isBlank() || generationModel.trim().equals(fallbackModel.trim())) {
-            return List.of(generationModel.trim());
+        LinkedHashSet<String> models = new LinkedHashSet<>();
+        models.add(generationModel.trim());
+        if (fallbackModel != null && !fallbackModel.isBlank()) {
+            models.add(fallbackModel.trim());
         }
-        return List.of(generationModel.trim(), fallbackModel.trim());
+        return List.copyOf(models);
+    }
+
+    private String activeGenerationModel() {
+        String persisted = repository.activeGenerationModel();
+        if (persisted == null || persisted.isBlank()) {
+            return generationModels().getFirst();
+        }
+        return generationModels().contains(persisted.trim()) ? persisted.trim() : generationModels().getFirst();
+    }
+
+    private List<String> orderedGenerationModels() {
+        String active = activeGenerationModel();
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        ordered.add(active);
+        generationModels().stream()
+                .filter(model -> !Objects.equals(model, active))
+                .forEach(ordered::add);
+        return List.copyOf(ordered);
     }
 
     private Map<String, Object> parseJsonObject(String raw) throws Exception {

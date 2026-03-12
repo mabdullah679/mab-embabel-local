@@ -4,9 +4,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class OllamaClient {
@@ -15,12 +17,15 @@ public class OllamaClient {
     private final String ollamaBaseUrl;
     private final String generationModel;
     private final String fallbackModel;
+    private final ToolsClient toolsClient;
 
     public OllamaClient(RestTemplate restTemplate,
+                        ToolsClient toolsClient,
                         @Value("${ollama.base-url:http://localhost:11434}") String ollamaBaseUrl,
                         @Value("${ollama.generation-model:qwen2.5:7b-instruct}") String generationModel,
                         @Value("${ollama.fallback-model:qwen2.5:3b}") String fallbackModel) {
         this.restTemplate = restTemplate;
+        this.toolsClient = toolsClient;
         this.ollamaBaseUrl = ollamaBaseUrl;
         this.generationModel = generationModel;
         this.fallbackModel = fallbackModel;
@@ -90,9 +95,25 @@ public class OllamaClient {
         if (generationModel == null || generationModel.isBlank()) {
             throw new IllegalStateException("ollama.generation-model must be configured by deployment");
         }
-        if (fallbackModel == null || fallbackModel.isBlank() || generationModel.trim().equals(fallbackModel.trim())) {
-            return List.of(generationModel.trim());
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        String active = activeGenerationModel();
+        ordered.add(active);
+        ordered.add(generationModel.trim());
+        if (fallbackModel != null && !fallbackModel.isBlank()) {
+            ordered.add(fallbackModel.trim());
         }
-        return List.of(generationModel.trim(), fallbackModel.trim());
+        return ordered.stream().filter(model -> !Objects.equals(model, "")).toList();
+    }
+
+    private String activeGenerationModel() {
+        try {
+            var state = toolsClient.systemState();
+            if (state != null && state.activeGenerationModel() != null && !state.activeGenerationModel().isBlank()) {
+                return state.activeGenerationModel().trim();
+            }
+        } catch (RuntimeException ignored) {
+            // Fall back to deployment default if tools state is unavailable.
+        }
+        return generationModel.trim();
     }
 }
