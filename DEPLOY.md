@@ -49,6 +49,7 @@ Uses the host-Ollama strategy by default.
 
 Behavior:
 - expects a host-native Ollama instance at `http://localhost:11434`
+- defaults to a smaller generation model profile for better CPU responsiveness
 
 ## Prerequisites
 
@@ -65,10 +66,15 @@ Required for the selected strategy:
   - Ollama running on port `11434`
 
 Recommended models:
-- `qwen2.5:7b-instruct`
+- GPU / stronger hosts:
+  - `qwen2.5:7b-instruct`
+  - fallback: `qwen2.5:3b`
+- CPU / weaker hosts:
+  - `qwen2.5:3b`
+  - fallback: `qwen2.5:1.5b`
 - `nomic-embed-text`
 
-The bootstrap flow will pull them automatically.
+The bootstrap flow selects a model profile automatically, pulls the active generation model, its fallback, and the embedding model, then warms the generation models once so the first agent request is less likely to stall.
 
 ## Main Commands
 
@@ -133,7 +139,8 @@ python scripts/deploy.py bootstrap
 2. start the correct compose stack
 3. wait for service health
 4. pull Ollama models
-5. seed sample RAG documents
+5. warm the selected generation models
+6. seed sample RAG documents
 
 ## URLs
 
@@ -209,7 +216,7 @@ ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
 ### Host-Ollama strategy selected, but startup fails
 
-That usually means Ollama is not running on the host.
+That usually means Ollama is not installed or not running on the host.
 
 Verify:
 
@@ -222,6 +229,11 @@ and:
 ```bash
 curl http://localhost:11434/api/tags
 ```
+
+If `ollama` is missing entirely:
+- macOS: install from `https://ollama.com/download` or `brew install --cask ollama`
+- Windows: install from `https://ollama.com/download`
+- Linux: install from `https://ollama.com/download` or your package manager, then run `ollama serve`
 
 ### NVIDIA host selected, but Ollama is still on CPU
 
@@ -248,6 +260,12 @@ Check logs:
 docker logs -f mab-orchestrator-app
 docker logs -f mab-tools-app
 docker logs -f mab-ollama
+```
+
+The app containers now wait on actuator readiness healthchecks, so first boot should be deterministic. If startup still stalls, inspect:
+
+```bash
+python scripts/deploy.py ps
 ```
 
 ### Re-seed local RAG data

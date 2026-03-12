@@ -22,6 +22,7 @@ create table if not exists contacts (
 create table if not exists email_drafts (
     id uuid primary key,
     recipient text not null,
+    sender_name text,
     subject text not null,
     body text not null,
     tone text not null,
@@ -31,6 +32,8 @@ create table if not exists email_drafts (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+alter table email_drafts add column if not exists sender_name text;
 
 create table if not exists app_state (
     id uuid primary key,

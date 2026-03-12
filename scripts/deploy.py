@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import platform
@@ -22,11 +23,28 @@ DEFAULT_TOOLS_URL = "http://localhost:8082"
 DEFAULT_ORCH_HEALTH = "http://localhost:8081/actuator/health"
 DEFAULT_TOOLS_HEALTH = "http://localhost:8082/actuator/health"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_OLLAMA_CONNECT_TIMEOUT = "4s"
+DEFAULT_OLLAMA_READ_TIMEOUT = "45s"
+DEFAULT_PRIMARY_WARMUP_TIMEOUT_SECONDS = 90
+DEFAULT_FALLBACK_WARMUP_TIMEOUT_SECONDS = 30
+DEFAULT_WARMUP_PROGRESS_INTERVAL_SECONDS = 5
 RAG_SEED_DOCS = [
     "Spring MCP tools are orchestrated by a planner agent in this local architecture.",
     "The orchestrator receives natural language queries and routes them to typed tools.",
     "RAG retrieval uses pgvector similarity search with embeddings from nomic-embed-text.",
 ]
+MODEL_PROFILES = {
+    "gpu": {
+        "generation": "qwen2.5:7b-instruct",
+        "fallback": "qwen2.5:3b",
+        "embedding": "nomic-embed-text",
+    },
+    "balanced": {
+        "generation": "qwen2.5:3b",
+        "fallback": "qwen2.5:1.5b",
+        "embedding": "nomic-embed-text",
+    },
+}
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None, cwd: Path = ROOT, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -47,6 +65,15 @@ def request_json(url: str, method: str = "GET", body: dict | None = None, timeou
         req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def request_raw(url: str, method: str = "GET", body: dict | None = None, timeout: int = 20) -> str:
+    payload = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method=method)
+    if payload is not None:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8")
 
 
 def wait_for_health(max_attempts: int = 90, sleep_seconds: int = 2) -> None:
@@ -91,6 +118,49 @@ def host_ollama_ready() -> bool:
         return False
 
 
+def detect_host_active_generation_model() -> str | None:
+    try:
+        response = request_json(f"{DEFAULT_OLLAMA_URL}/api/ps", timeout=10)
+        models = response.get("models") or []
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            name = str(model.get("name") or "").strip()
+            if name and name != "nomic-embed-text":
+                return name
+    except Exception:
+        return None
+    return None
+
+
+def host_ollama_install_hint() -> str:
+    system = platform.system().lower()
+    if system == "darwin":
+        return "Install Ollama from https://ollama.com/download or with `brew install --cask ollama`, then start the Ollama app."
+    if system == "windows":
+        return "Install Ollama from https://ollama.com/download and ensure the Ollama desktop app is running."
+    return "Install Ollama from https://ollama.com/download or your package manager, then start `ollama serve`."
+
+
+def apply_model_profile(env: dict[str, str], profile_name: str) -> dict[str, str]:
+    profile = MODEL_PROFILES[profile_name]
+    env["OLLAMA_GENERATION_MODEL"] = profile["generation"]
+    env["OLLAMA_FALLBACK_MODEL"] = profile["fallback"]
+    env["OLLAMA_EMBEDDING_MODEL"] = profile["embedding"]
+    env.setdefault("OLLAMA_CONNECT_TIMEOUT", DEFAULT_OLLAMA_CONNECT_TIMEOUT)
+    env.setdefault("OLLAMA_READ_TIMEOUT", DEFAULT_OLLAMA_READ_TIMEOUT)
+    env["OLLAMA_MODEL_PROFILE"] = profile_name
+    return env
+
+
+def finalize_declared_models(strategy: str, env: dict[str, str]) -> dict[str, str]:
+    if strategy != "nvidia-container-ollama" and host_ollama_ready():
+        active_model = detect_host_active_generation_model()
+        if active_model:
+            env["OLLAMA_GENERATION_MODEL"] = active_model
+    return env
+
+
 def detect_strategy() -> tuple[str, list[Path], dict[str, str]]:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -99,13 +169,16 @@ def detect_strategy() -> tuple[str, list[Path], dict[str, str]]:
 
     if system == "darwin" and machine in {"arm64", "aarch64"}:
         env["OLLAMA_BASE_URL"] = "http://host.docker.internal:11434"
-        return "host-ollama-mac", [BASE_COMPOSE, HOST_OLLAMA_COMPOSE], env
+        strategy = "host-ollama-mac"
+        return strategy, [BASE_COMPOSE, HOST_OLLAMA_COMPOSE], finalize_declared_models(strategy, apply_model_profile(env, "gpu"))
 
     if has_nvidia_host() and system in {"windows", "linux"}:
-        return "nvidia-container-ollama", [BASE_COMPOSE, NVIDIA_COMPOSE], env
+        strategy = "nvidia-container-ollama"
+        return strategy, [BASE_COMPOSE, NVIDIA_COMPOSE], finalize_declared_models(strategy, apply_model_profile(env, "gpu"))
 
     env["OLLAMA_BASE_URL"] = "http://host.docker.internal:11434"
-    return "host-ollama-generic", [BASE_COMPOSE, HOST_OLLAMA_COMPOSE], env
+    strategy = "host-ollama-generic"
+    return strategy, [BASE_COMPOSE, HOST_OLLAMA_COMPOSE], finalize_declared_models(strategy, apply_model_profile(env, "balanced"))
 
 
 def compose_command(files: list[Path], args: list[str]) -> list[str]:
@@ -116,25 +189,75 @@ def compose_command(files: list[Path], args: list[str]) -> list[str]:
     return cmd
 
 
-def pull_models(strategy: str) -> None:
+def pull_models(strategy: str, env: dict[str, str]) -> None:
+    models = [
+        env["OLLAMA_GENERATION_MODEL"],
+        env["OLLAMA_FALLBACK_MODEL"],
+        env["OLLAMA_EMBEDDING_MODEL"],
+    ]
     if strategy == "nvidia-container-ollama":
-        run(["docker", "exec", "mab-ollama", "ollama", "pull", "qwen2.5:7b-instruct"])
-        run(["docker", "exec", "mab-ollama", "ollama", "pull", "nomic-embed-text"])
+        for model in models:
+            run(["docker", "exec", "mab-ollama", "ollama", "pull", model])
         return
 
     if not is_command_available("ollama"):
-        raise SystemExit("Host Ollama is required for this deployment strategy, but the `ollama` command is not installed.")
-    run(["ollama", "pull", "qwen2.5:7b-instruct"])
-    run(["ollama", "pull", "nomic-embed-text"])
+        raise SystemExit("Host Ollama is required for this deployment strategy, but the `ollama` command is not installed. " + host_ollama_install_hint())
+    for model in models:
+        run(["ollama", "pull", model])
+
+
+def warm_models(env: dict[str, str]) -> None:
+    ollama_url = env.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_URL).replace("http://host.docker.internal:11434", DEFAULT_OLLAMA_URL)
+    models = [
+        (env["OLLAMA_GENERATION_MODEL"], DEFAULT_PRIMARY_WARMUP_TIMEOUT_SECONDS),
+        (env["OLLAMA_FALLBACK_MODEL"], DEFAULT_FALLBACK_WARMUP_TIMEOUT_SECONDS),
+    ]
+    for model, timeout_seconds in models:
+        print(f"Warming model: {model}")
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                started = time.monotonic()
+                future = executor.submit(
+                    request_raw,
+                    f"{ollama_url}/api/generate",
+                    "POST",
+                    {
+                        "model": model,
+                        "prompt": "ready",
+                        "stream": False,
+                        "options": {"num_predict": 1}
+                    },
+                    timeout_seconds,
+                )
+                while True:
+                    try:
+                        future.result(timeout=DEFAULT_WARMUP_PROGRESS_INTERVAL_SECONDS)
+                        break
+                    except concurrent.futures.TimeoutError:
+                        elapsed = int(time.monotonic() - started)
+                        if elapsed >= timeout_seconds:
+                            raise TimeoutError(f"timed out after {timeout_seconds}s")
+                        print(f"  still warming {model}... {elapsed}s elapsed")
+            print(f"Warmed model: {model}")
+        except KeyboardInterrupt:
+            print("\nWarmup interrupted. Continuing without completing model warmup.")
+            return
+        except Exception as exc:
+            print(f"Warning: model warmup failed for {model}: {exc}")
 
 
 def ensure_host_ollama(strategy: str) -> None:
     if strategy == "nvidia-container-ollama":
         return
+    if not is_command_available("ollama"):
+        raise SystemExit(
+            "This deployment strategy expects host-native Ollama, but the `ollama` command is not installed. "
+            + host_ollama_install_hint()
+        )
     if not host_ollama_ready():
         raise SystemExit(
             "This deployment strategy expects Ollama running on the host at http://localhost:11434. "
-            "Start host Ollama first, then rerun the deploy script."
+            + host_ollama_install_hint()
         )
 
 
@@ -144,6 +267,17 @@ def print_plan(strategy: str, files: list[Path], env: dict[str, str]) -> None:
     for file in files:
         print(f"  - {file.name}")
     print(f"OLLAMA_BASE_URL: {env.get('OLLAMA_BASE_URL', 'http://ollama:11434')}")
+    print(f"OLLAMA_GENERATION_MODEL: {env.get('OLLAMA_GENERATION_MODEL')}")
+    print(f"OLLAMA_FALLBACK_MODEL: {env.get('OLLAMA_FALLBACK_MODEL')}")
+    print(f"OLLAMA_READ_TIMEOUT: {env.get('OLLAMA_READ_TIMEOUT')}")
+    print("Model authority: deployment environment")
+    if strategy != "nvidia-container-ollama":
+        if not is_command_available("ollama"):
+            print(f"Host Ollama status: missing `ollama` command. {host_ollama_install_hint()}")
+        elif not host_ollama_ready():
+            print(f"Host Ollama status: installed, but not responding at {DEFAULT_OLLAMA_URL}. Start Ollama before `up` or `bootstrap`.")
+        else:
+            print("Host Ollama status: ready")
 
 
 def do_up(files: list[Path], env: dict[str, str], build: bool) -> None:
@@ -151,6 +285,10 @@ def do_up(files: list[Path], env: dict[str, str], build: bool) -> None:
     if build:
         args.insert(1, "--build")
     run(compose_command(files, args), env=env)
+
+
+def do_up_services(files: list[Path], env: dict[str, str], services: list[str]) -> None:
+    run(compose_command(files, ["up", "-d", *services]), env=env)
 
 
 def do_down(files: list[Path], env: dict[str, str]) -> None:
@@ -163,9 +301,16 @@ def do_ps(files: list[Path], env: dict[str, str]) -> None:
 
 def bootstrap(strategy: str, files: list[Path], env: dict[str, str]) -> None:
     ensure_host_ollama(strategy)
-    do_up(files, env, build=True)
+    if strategy == "nvidia-container-ollama":
+        do_up_services(files, env, ["postgres", "ollama"])
+        pull_models(strategy, env)
+        warm_models(env)
+        do_up(files, env, build=True)
+    else:
+        pull_models(strategy, env)
+        warm_models(env)
+        do_up(files, env, build=True)
     wait_for_health()
-    pull_models(strategy)
     seed_rag()
 
 

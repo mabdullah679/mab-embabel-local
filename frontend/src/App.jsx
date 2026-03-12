@@ -5,6 +5,7 @@ const STORAGE_KEY = 'mab-embabel-chat-sessions';
 const SYSTEM_STATE_KEY = 'mab-embabel-database-id';
 const ORCHESTRATOR_URL = 'http://localhost:8081';
 const TOOLS_URL = 'http://localhost:8082';
+const AGENT_REQUEST_TIMEOUT_MS = 60000;
 
 function createSession(name = 'New Chat') {
   return {
@@ -43,14 +44,33 @@ function deriveSessionName(query) {
   return query.trim().replace(/\s+/g, ' ');
 }
 
+function buildConversationHistory(messages) {
+  return (messages || [])
+    .flatMap((message) => {
+      if (message.role === 'user') {
+        return [{ role: 'user', content: message.query }];
+      }
+      if (message.role === 'assistant') {
+        return [{ role: 'assistant', content: String(message.result?.result ?? '') }];
+      }
+      return [];
+    })
+    .filter((turn) => turn.content && turn.content.trim().length > 0);
+}
+
 function parseEmailDraft(value) {
   if (typeof value === 'object' && value?.recipient && value?.subject && value?.body) {
-    const closing = value?.tone === 'casual' ? 'Best,\nAgent' : 'Regards,\nAgent';
-    const draft = `To: ${value.recipient}\nSubject: ${value.subject}\n\n${buildGreetingFromRecipients(value.recipient)}\n\n${value.body}\n\n${closing}`;
+    const signer = value?.senderName || '[Sender Name]';
+    const closing = `${value?.tone === 'casual' ? 'Best' : 'Regards'},\n${signer}`;
+    const body = String(value.body || '')
+      .replace(/\n*(Best regards|Regards|Best),?\s*\n(?:\[?Your Name\]?|[A-Za-z][^\n]*)\s*$/i, '')
+      .trim();
+    const draft = `To: ${value.recipient}\nSubject: ${value.subject}\n\n${buildGreetingFromRecipients(value.recipient)}\n\n${body}\n\n${closing}`;
     return {
       to: value.recipient,
+      senderName: signer,
       subject: value.subject,
-      body: value.body,
+      body,
       closing,
       draft
     };
@@ -75,12 +95,13 @@ function parseEmailDraft(value) {
   const body = lines
     .slice(3)
     .join('\n')
-    .replace(/\n*(Regards|Best),\nAgent\s*$/i, '')
+    .replace(/\n*(Regards|Best),\n.+\s*$/i, '')
     .trim();
-  const closingMatch = value.match(/\n(Best|Regards),\nAgent\s*$/i);
-  const closing = closingMatch ? `${closingMatch[1]},\nAgent` : '';
+  const closingMatch = value.match(/\n(Best|Regards),\n(.+)\s*$/i);
+  const closing = closingMatch ? `${closingMatch[1]},\n${closingMatch[2]}` : '';
+  const senderName = closingMatch ? closingMatch[2] : '';
 
-  return { to, subject, body, closing, draft: value };
+  return { to, senderName, subject, body, closing, draft: value };
 }
 
 function buildGreetingFromRecipients(recipientField) {
@@ -191,6 +212,7 @@ function buildEmailForm(draft) {
     : '';
   return {
     recipient: draft?.recipient || '',
+    senderName: draft?.senderName || '',
     subject: draft?.subject || '',
     body: draft?.body || '',
     tone: draft?.tone || 'professional',
@@ -207,6 +229,7 @@ function EmailDraftCard({ draft, compact = false }) {
   return (
     <div className={compact ? 'email-card compact' : 'email-card'}>
       <div className="email-row"><span>To</span><strong>{parsed.to}</strong></div>
+      <div className="email-row"><span>From</span><strong>{parsed.senderName || '[Sender Name]'}</strong></div>
       <div className="email-row"><span>Subject</span><strong>{parsed.subject}</strong></div>
       <div className="email-body">
         <p>{parsed.body || 'No message body provided.'}</p>
@@ -445,7 +468,12 @@ function App() {
   const [editingSessionId, setEditingSessionId] = useState(null);
   const [editingSessionName, setEditingSessionName] = useState('');
   const [stateNotice, setStateNotice] = useState('');
+  const [systemState, setSystemState] = useState(null);
+  const [agentStatus, setAgentStatus] = useState({ tone: 'idle', text: 'Agent is ready.' });
   const abortRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const abortReasonRef = useRef(null);
+  const requestIdRef = useRef(0);
   const messageListRef = useRef(null);
   const menuRef = useRef(null);
 
@@ -482,6 +510,25 @@ function App() {
   useEffect(() => {
     messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: 'smooth' });
   }, [activeSession?.messages?.length, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      return undefined;
+    }
+
+    const slowTimer = window.setTimeout(() => {
+      setAgentStatus({ tone: 'slow', text: 'Agent is still responding. The backend or model looks slow.' });
+    }, 8000);
+
+    const stuckTimer = window.setTimeout(() => {
+      setAgentStatus({ tone: 'error', text: 'Agent may be stuck. Check the orchestrator and model logs or stop the run.' });
+    }, 20000);
+
+    return () => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(stuckTimer);
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (selectedCalendarItem) {
@@ -537,6 +584,7 @@ function App() {
         localStorage.setItem(SYSTEM_STATE_KEY, databaseId);
       }
 
+      setSystemState(stateBody);
       setEmailDrafts(draftsBody.drafts || []);
       setCalendarItems(calendarBody.items || []);
       setContacts(contactsBody.contacts || []);
@@ -559,6 +607,11 @@ function App() {
       return;
     }
 
+    const sessionBeforeSubmit = activeSession;
+    const history = buildConversationHistory(sessionBeforeSubmit?.messages || []);
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
     const submittedAt = new Date().toISOString();
     const pendingMessage = {
       id: crypto.randomUUID(),
@@ -570,6 +623,8 @@ function App() {
     setQuery('');
     setLoading(true);
     setStateNotice('');
+    setAgentStatus({ tone: 'loading', text: 'Sending request to the agent.' });
+    abortReasonRef.current = null;
     setSessions((current) =>
       current.map((session) =>
         session.id === activeSessionId
@@ -585,15 +640,27 @@ function App() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    timeoutRef.current = window.setTimeout(() => {
+      abortReasonRef.current = 'timeout';
+      controller.abort();
+    }, AGENT_REQUEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(`${ORCHESTRATOR_URL}/agent/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify({ query: trimmed, history }),
         signal: controller.signal
       });
+      if (!response.ok) {
+        throw new Error(`Agent request failed with HTTP ${response.status}`);
+      }
       const body = await response.json();
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      setAgentStatus({ tone: 'success', text: 'Agent response received.' });
 
       setSessions((current) =>
         current.map((session) =>
@@ -617,9 +684,19 @@ function App() {
       );
       await reloadReferenceData();
     } catch (error) {
-      const result = error.name === 'AbortError'
-        ? { result: 'Request stopped.', traces: [], iterations: 0 }
-        : { result: String(error), traces: [], iterations: 0 };
+      if (error.name === 'AbortError') {
+        if (abortReasonRef.current === 'timeout') {
+          setStateNotice('Agent request timed out.');
+          setAgentStatus({ tone: 'error', text: 'Agent request timed out. Check the backend logs or try a smaller model profile.' });
+          return;
+        }
+        setStateNotice('Request stopped.');
+        setAgentStatus({ tone: 'stopped', text: 'Request stopped.' });
+        return;
+      }
+
+      const result = { result: String(error), traces: [], iterations: 0 };
+      setAgentStatus({ tone: 'error', text: `Agent failed: ${String(error)}` });
 
       setSessions((current) =>
         current.map((session) =>
@@ -642,13 +719,29 @@ function App() {
         )
       );
     } finally {
-      abortRef.current = null;
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        abortRef.current = null;
+        if (timeoutRef.current) {
+          window.clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        abortReasonRef.current = null;
+        setLoading(false);
+      }
     }
   }
 
   function stopRun() {
+    requestIdRef.current += 1;
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    abortReasonRef.current = 'stopped';
     abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setAgentStatus({ tone: 'stopped', text: 'Request stopped.' });
   }
 
   function createNewChat() {
@@ -822,6 +915,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipient: emailForm.recipient.trim(),
+          senderName: emailForm.senderName.trim(),
           subject: emailForm.subject.trim(),
           body: emailForm.body.trim(),
           tone: emailForm.tone
@@ -1037,17 +1131,28 @@ function App() {
               <div>
                 <p className="eyebrow">Agent Console</p>
                 <h2>{activeSession.name}</h2>
+                {systemState?.generationModel && (
+                  <p className="agent-model-meta">
+                    Model: <strong>{systemState.generationModel}</strong>
+                    {systemState.modelAuthority ? ` via ${systemState.modelAuthority}` : ''}
+                  </p>
+                )}
               </div>
-              <p className="panel-copy">Conversations persist locally in this browser and specialized tabs read from the same backend-backed data.</p>
+                <p className="panel-copy">Conversations persist locally in this browser. The main assistant surface is focused on email and calendar workflows.</p>
             </div>
 
             {stateNotice && <div className="state-notice">{stateNotice}</div>}
+            <div className={`agent-status agent-status-${agentStatus.tone}`} aria-live="polite">
+              <span className="agent-status-dot" aria-hidden="true" />
+              <span>{agentStatus.text}</span>
+            </div>
 
             <div className="message-list" ref={messageListRef}>
               {activeSession.messages.length === 0 && (
                 <div className="empty-state">
                   <strong>No messages yet.</strong>
                   <p>Try: <code>add a reminder "push code to origin main" at 12pm today</code></p>
+                  <p>Or: <code>draft an email to Joe about tomorrow&apos;s check-in</code></p>
                 </div>
               )}
 
@@ -1100,8 +1205,18 @@ function App() {
                   id="query"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (loading) {
+                        stopRun();
+                      } else {
+                        runQuery();
+                      }
+                    }
+                  }}
                   rows={3}
-                  placeholder="Ask for one supported task at a time."
+                  placeholder="Ask for one email or calendar task at a time."
                 />
                 <button
                   className={loading ? 'run icon-button stop' : 'run icon-button'}
@@ -1313,6 +1428,15 @@ function App() {
                       className="text-input"
                       value={emailForm.recipient}
                       onChange={(event) => setEmailForm((current) => ({ ...current, recipient: event.target.value }))}
+                    />
+                  </label>
+
+                  <label>
+                    Sender
+                    <input
+                      className="text-input"
+                      value={emailForm.senderName}
+                      onChange={(event) => setEmailForm((current) => ({ ...current, senderName: event.target.value }))}
                     />
                   </label>
 

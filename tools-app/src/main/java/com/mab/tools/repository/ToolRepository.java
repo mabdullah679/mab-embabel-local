@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.UUID;
 
 @Repository
@@ -212,12 +213,13 @@ public class ToolRepository {
         );
     }
 
-    public EmailDraftRecord createEmailDraft(String recipient, String subject, String body, String tone) {
+    public EmailDraftRecord createEmailDraft(String recipient, String senderName, String subject, String body, String tone) {
         String id = UUID.randomUUID().toString();
         jdbcTemplate.update(
-                "insert into email_drafts (id, recipient, subject, body, tone, status) values (?::uuid, ?, ?, ?, ?, 'DRAFT')",
+                "insert into email_drafts (id, recipient, sender_name, subject, body, tone, status) values (?::uuid, ?, ?, ?, ?, ?, 'DRAFT')",
                 id,
                 recipient,
+                nullableTrim(senderName),
                 subject,
                 body,
                 tone
@@ -227,7 +229,7 @@ public class ToolRepository {
 
     public List<EmailDraftRecord> listEmailDrafts() {
         return jdbcTemplate.query(
-                "select id::text, recipient, subject, body, tone, status, scheduled_for::text, sent_at::text, created_at::text, updated_at::text " +
+                "select id::text, recipient, sender_name, subject, body, tone, status, scheduled_for::text, sent_at::text, created_at::text, updated_at::text " +
                         "from email_drafts order by updated_at desc, created_at desc",
                 (rs, rowNum) -> new EmailDraftRecord(
                         rs.getString(1),
@@ -239,15 +241,17 @@ public class ToolRepository {
                         rs.getString(7),
                         rs.getString(8),
                         rs.getString(9),
-                        rs.getString(10)
+                        rs.getString(10),
+                        rs.getString(11)
                 )
         );
     }
 
-    public EmailDraftRecord updateEmailDraft(String id, String recipient, String subject, String body, String tone) {
+    public EmailDraftRecord updateEmailDraft(String id, String recipient, String senderName, String subject, String body, String tone) {
         int updated = jdbcTemplate.update(
-                "update email_drafts set recipient = ?, subject = ?, body = ?, tone = ?, updated_at = now() where id = ?::uuid",
+                "update email_drafts set recipient = ?, sender_name = ?, subject = ?, body = ?, tone = ?, updated_at = now() where id = ?::uuid",
                 recipient,
+                nullableTrim(senderName),
                 subject,
                 body,
                 tone,
@@ -327,14 +331,26 @@ public class ToolRepository {
         if (names == null || names.isEmpty()) {
             return List.of();
         }
+        List<String> normalized = names.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(this::normalizeNameTerm)
+                .filter(name -> !name.isBlank())
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            return List.of();
+        }
         StringBuilder sql = new StringBuilder("select id::text, name, email, created_at::text from contacts where ");
-        Object[] params = new Object[names.size()];
-        for (int i = 0; i < names.size(); i++) {
+        Object[] params = new Object[normalized.size() * 3];
+        for (int i = 0; i < normalized.size(); i++) {
             if (i > 0) {
                 sql.append(" or ");
             }
-            sql.append("lower(name) = lower(?)");
-            params[i] = names.get(i);
+            sql.append("(lower(name) = ? or split_part(lower(name), ' ', 1) = ? or lower(name) like ?)");
+            String term = normalized.get(i);
+            params[i * 3] = term;
+            params[i * 3 + 1] = term;
+            params[i * 3 + 2] = "%" + term + "%";
         }
         sql.append(" order by name asc");
         return jdbcTemplate.query(
@@ -349,6 +365,13 @@ public class ToolRepository {
         );
     }
 
+    private String normalizeNameTerm(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        normalized = normalized.replaceAll("^[^a-z0-9]+|[^a-z0-9]+$", "");
+        normalized = normalized.replaceAll("\\s+", " ");
+        return normalized;
+    }
+
     public String databaseId() {
         return jdbcTemplate.queryForObject(
                 "select id::text from app_state order by created_at asc limit 1",
@@ -358,7 +381,7 @@ public class ToolRepository {
 
     public EmailDraftRecord findEmailDraft(String id) {
         return jdbcTemplate.queryForObject(
-                "select id::text, recipient, subject, body, tone, status, scheduled_for::text, sent_at::text, created_at::text, updated_at::text from email_drafts where id = ?::uuid",
+                "select id::text, recipient, sender_name, subject, body, tone, status, scheduled_for::text, sent_at::text, created_at::text, updated_at::text from email_drafts where id = ?::uuid",
                 (rs, rowNum) -> new EmailDraftRecord(
                         rs.getString(1),
                         rs.getString(2),
@@ -369,7 +392,8 @@ public class ToolRepository {
                         rs.getString(7),
                         rs.getString(8),
                         rs.getString(9),
-                        rs.getString(10)
+                        rs.getString(10),
+                        rs.getString(11)
                 ),
                 id
         );
@@ -408,6 +432,14 @@ public class ToolRepository {
         } catch (JsonProcessingException e) {
             return List.of();
         }
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public record RagChunkRow(

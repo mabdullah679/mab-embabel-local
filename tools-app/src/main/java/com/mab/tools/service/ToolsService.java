@@ -33,15 +33,25 @@ public class ToolsService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final String ollamaBaseUrl;
+    private final String generationModel;
+    private final String fallbackModel;
+    private final String embeddingModel;
+    private static final String MODEL_AUTHORITY = "deployment environment";
 
     public ToolsService(ToolRepository repository,
                         RestTemplate restTemplate,
                         ObjectMapper objectMapper,
-                        @Value("${ollama.base-url:http://localhost:11434}") String ollamaBaseUrl) {
+                        @Value("${ollama.base-url:http://localhost:11434}") String ollamaBaseUrl,
+                        @Value("${ollama.generation-model:qwen2.5:7b-instruct}") String generationModel,
+                        @Value("${ollama.fallback-model:qwen2.5:3b}") String fallbackModel,
+                        @Value("${ollama.embedding-model:nomic-embed-text}") String embeddingModel) {
         this.repository = repository;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.ollamaBaseUrl = ollamaBaseUrl;
+        this.generationModel = generationModel;
+        this.fallbackModel = fallbackModel;
+        this.embeddingModel = embeddingModel;
     }
 
     public EmailToolResponse generateEmail(EmailToolRequest request) {
@@ -49,10 +59,11 @@ public class ToolsService {
         String greeting = buildGreeting(toLine);
         String body = normalizeEmailBody(request.body());
         String closing = "casual".equalsIgnoreCase(request.tone()) ? "Best" : "Regards";
-        String draft = "To: %s\nSubject: %s\n\n%s\n\n%s\n\n%s,\nAgent"
-                .formatted(toLine, request.subject(), greeting, body, closing);
-        EmailDraftRecord record = repository.createEmailDraft(request.recipient(), request.subject(), body, request.tone());
-        return new EmailToolResponse(record.id(), draft, record.recipient(), record.subject(), record.body(), record.tone(), record.status(), record.scheduledFor(), record.sentAt());
+        String senderName = normalizedSenderName(request.senderName());
+        String draft = "To: %s\nSubject: %s\n\n%s\n\n%s\n\n%s,\n%s"
+                .formatted(toLine, request.subject(), greeting, body, closing, senderName == null ? "Agent" : senderName);
+        EmailDraftRecord record = repository.createEmailDraft(toLine, senderName, request.subject(), body, request.tone());
+        return new EmailToolResponse(record.id(), draft, record.recipient(), record.senderName(), record.subject(), record.body(), record.tone(), record.status(), record.scheduledFor(), record.sentAt());
     }
 
     private String normalizeEmailBody(String body) {
@@ -61,6 +72,13 @@ public class ToolsService {
         }
         String trimmed = body.trim();
         return Character.toUpperCase(trimmed.charAt(0)) + trimmed.substring(1);
+    }
+
+    private String normalizedSenderName(String senderName) {
+        if (senderName == null || senderName.isBlank()) {
+            return null;
+        }
+        return senderName.trim();
     }
 
     private String resolveEmailRecipients(EmailToolRequest request) {
@@ -228,7 +246,7 @@ public class ToolsService {
     }
 
     public EmailDraftRecord updateEmailDraft(String id, EmailDraftUpdateRequest request) {
-        return repository.updateEmailDraft(id, request.recipient(), request.subject(), normalizeEmailBody(request.body()), request.tone());
+        return repository.updateEmailDraft(id, request.recipient(), request.senderName(), request.subject(), normalizeEmailBody(request.body()), request.tone());
     }
 
     public EmailDraftRecord scheduleEmailDraft(String id, EmailDraftScheduleRequest request) {
@@ -256,7 +274,13 @@ public class ToolsService {
     }
 
     public SystemStateResponse systemState() {
-        return new SystemStateResponse(repository.databaseId());
+        return new SystemStateResponse(
+                repository.databaseId(),
+                generationModel,
+                fallbackModel,
+                embeddingModel,
+                MODEL_AUTHORITY
+        );
     }
 
     List<String> chunkContent(String content) {
@@ -486,7 +510,7 @@ public class ToolsService {
     @SuppressWarnings("unchecked")
     private List<Double> embed(String text) {
         Map<String, Object> payload = Map.of(
-                "model", "nomic-embed-text",
+                "model", embeddingModel,
                 "prompt", text
         );
 
@@ -505,23 +529,44 @@ public class ToolsService {
 
     @SuppressWarnings("unchecked")
     private String generate(String prompt) {
-        Map<String, Object> payload = Map.of(
-                "model", "qwen2.5:7b-instruct",
-                "prompt", prompt,
-                "stream", false,
-                "format", "json"
-        );
+        RuntimeException lastFailure = null;
+        for (String model : generationModels()) {
+            Map<String, Object> payload = Map.of(
+                    "model", model,
+                    "prompt", prompt,
+                    "stream", false,
+                    "format", "json"
+            );
 
-        Map<String, Object> response = restTemplate.postForObject(
-                ollamaBaseUrl + "/api/generate",
-                payload,
-                Map.class
-        );
+            try {
+                Map<String, Object> response = restTemplate.postForObject(
+                        ollamaBaseUrl + "/api/generate",
+                        payload,
+                        Map.class
+                );
 
-        if (response == null || response.get("response") == null) {
-            throw new IllegalStateException("Ollama generation response missing data");
+                if (response == null || response.get("response") == null) {
+                    throw new IllegalStateException("Ollama generation response missing data");
+                }
+                return String.valueOf(response.get("response"));
+            } catch (RuntimeException exception) {
+                lastFailure = exception;
+            }
         }
-        return String.valueOf(response.get("response"));
+        if (lastFailure != null) {
+            throw lastFailure;
+        }
+        throw new IllegalStateException("No Ollama generation model configured");
+    }
+
+    private List<String> generationModels() {
+        if (generationModel == null || generationModel.isBlank()) {
+            throw new IllegalStateException("ollama.generation-model must be configured by deployment");
+        }
+        if (fallbackModel == null || fallbackModel.isBlank() || generationModel.trim().equals(fallbackModel.trim())) {
+            return List.of(generationModel.trim());
+        }
+        return List.of(generationModel.trim(), fallbackModel.trim());
     }
 
     private Map<String, Object> parseJsonObject(String raw) throws Exception {

@@ -11,7 +11,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolsServiceTest {
 
-    private final ToolsService service = new ToolsService(null, null, new ObjectMapper(), "http://localhost:11434");
+    private final ToolsService service = new ToolsService(
+            null,
+            null,
+            new ObjectMapper(),
+            "http://localhost:11434",
+            "qwen2.5:7b-instruct",
+            "qwen2.5:3b",
+            "nomic-embed-text"
+    );
 
     @Test
     void chunkingKeepsShortDocumentsWhole() {

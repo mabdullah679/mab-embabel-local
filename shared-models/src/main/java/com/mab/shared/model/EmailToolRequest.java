@@ -6,6 +6,7 @@ import java.util.List;
 
 public record EmailToolRequest(
         String recipient,
+        String senderName,
         List<String> recipientNames,
         List<String> recipientEmails,
         @NotBlank String subject,

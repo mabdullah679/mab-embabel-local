@@ -44,3 +44,7 @@ tools:
 
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  generation-model: ${OLLAMA_GENERATION_MODEL:qwen2.5:7b-instruct}
+  fallback-model: ${OLLAMA_FALLBACK_MODEL:qwen2.5:3b}
+  connect-timeout: ${OLLAMA_CONNECT_TIMEOUT:4s}
+  read-timeout: ${OLLAMA_READ_TIMEOUT:45s}
