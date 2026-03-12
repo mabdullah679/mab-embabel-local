@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mab-postgres
+    environment:
+      POSTGRES_DB: mab
+      POSTGRES_USER: mab
+      POSTGRES_PASSWORD: mab
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mab -d mab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  tools-app:
+    build:
+      context: .
+      dockerfile: tools-app/Dockerfile
+    container_name: mab-tools-app
+    environment:
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mab
+      SPRING_DATASOURCE_USERNAME: mab
+      SPRING_DATASOURCE_PASSWORD: mab
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports:
+      - "8082:8082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  orchestrator-app:
+    build:
+      context: .
+      dockerfile: orchestrator-app/Dockerfile
+    container_name: mab-orchestrator-app
+    environment:
+      SERVER_PORT: 8081
+      TOOLS_BASE_URL: http://tools-app:8082
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports:
+      - "8081:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      tools-app:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mab-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus-rules.yml:/etc/prometheus/rules/mab-rules.yml:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mab-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mab-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      orchestrator-app:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  grafana_data:

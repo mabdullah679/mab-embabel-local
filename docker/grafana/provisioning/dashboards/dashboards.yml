@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: mab-embabel-local
+    orgId: 1
+    folder: MAB Embabel Local
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards

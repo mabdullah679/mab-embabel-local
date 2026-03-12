@@ -1,0 +1,140 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.1">
+  <diagram id="exampleWorkflowSwimlanes" name="Example Send Task Workflow">
+    <mxGraphModel dx="2712" dy="1298" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#17324d;" value="Example Workflow: “Make Joe&#39;s Email Shorter and Send It Tomorrow at 9”" vertex="1">
+          <mxGeometry height="40" width="980" x="60" y="24" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontColor=#5f7385;" value="Swimlane layout: each step sits in the system that owns it, so the execution path is readable and the responsibility split is explicit." vertex="1">
+          <mxGeometry height="24" width="1100" x="60" y="64" as="geometry" />
+        </mxCell>
+        <mxCell id="laneUser" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#eef7fc;strokeColor=#4d91b3;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1160" width="300" x="60" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="laneOrch" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#eef8e8;strokeColor=#6d9f5b;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1160" width="430" x="410" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="laneLLM" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#fff2de;strokeColor=#cf9b47;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1160" width="390" x="890" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="laneTools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#f6f1fb;strokeColor=#9a6fb5;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1160" width="450" x="1330" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="laneUI" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#eef9f1;strokeColor=#59a17c;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1160" width="300" x="1830" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="userLabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#17324d;align=center;" value="User" vertex="1">
+          <mxGeometry height="30" width="120" x="150" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="orchLabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#17324d;align=center;" value="Orchestrator" vertex="1">
+          <mxGeometry height="30" width="160" x="545" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="llmLabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#17324d;align=center;" value="LLM" vertex="1">
+          <mxGeometry height="30" width="110" x="1030" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="toolsLabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#17324d;align=center;" value="Tools / Backend" vertex="1">
+          <mxGeometry height="30" width="170" x="1475" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="uiLabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#17324d;align=center;" value="Frontend UI" vertex="1">
+          <mxGeometry height="30" width="150" x="1905" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="u1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#4d91b3;fontSize=17;fontStyle=1;spacing=18;align=left;" value="1. Prompt&lt;br&gt;&lt;br&gt;&quot;Make Joe&#39;s email shorter and send it tomorrow at 9.&quot;" vertex="1">
+          <mxGeometry height="120" width="230" x="95" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="o1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#6d9f5b;fontSize=17;fontStyle=1;spacing=18;align=left;" value="2. Detect task family&lt;br&gt;&lt;br&gt;Deterministic routing selects the email family." vertex="1">
+          <mxGeometry height="110" width="310" x="470" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="o2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#6d9f5b;fontSize=17;fontStyle=1;spacing=18;align=left;" value="3. Record planner-family trace&lt;br&gt;&lt;br&gt;The orchestrator captures the selected family before any model call." vertex="1">
+          <mxGeometry height="120" width="310" x="470" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="o3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#6d9f5b;fontSize=17;fontStyle=1;spacing=18;align=left;" value="5. Validate planner JSON&lt;br&gt;&lt;br&gt;The orchestrator accepts only the expected strict contract." vertex="1">
+          <mxGeometry height="120" width="310" x="470" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="o4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#6d9f5b;fontSize=17;fontStyle=1;spacing=18;align=left;" value="7. Optional rewrite request&lt;br&gt;&lt;br&gt;Because the prompt says “shorter”, the orchestrator asks for a rewrite before execution." vertex="1">
+          <mxGeometry height="130" width="310" x="470" y="990" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#cf9b47;fontSize=17;fontStyle=1;spacing=18;align=left;" value="4. Generate strict JSON plan&lt;br&gt;&lt;br&gt;Example intent:&lt;br&gt;action = update_email_draft&lt;br&gt;targetLookup.recipientName = Joe&lt;br&gt;arguments.rewriteInstruction = make it shorter" vertex="1">
+          <mxGeometry height="170" width="300" x="950" y="355" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#cf9b47;fontSize=17;fontStyle=1;spacing=18;align=left;" value="6. Return planner JSON&lt;br&gt;&lt;br&gt;The plan comes back as structured data, not executable state." vertex="1">
+          <mxGeometry height="110" width="300" x="950" y="685" as="geometry" />
+        </mxCell>
+        <mxCell id="l3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#cf9b47;fontSize=17;fontStyle=1;spacing=18;align=left;" value="8. Rewrite the draft&lt;br&gt;&lt;br&gt;The LLM generates a shorter body and adjusted phrasing for the existing draft." vertex="1">
+          <mxGeometry height="130" width="300" x="935" y="990" as="geometry" />
+        </mxCell>
+        <mxCell id="t1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9a6fb5;fontSize=17;fontStyle=1;spacing=18;align=left;" value="9. Resolve the target draft&lt;br&gt;&lt;br&gt;PlannerExecutionService searches contacts and email drafts for Joe&#39;s email." vertex="1">
+          <mxGeometry height="130" width="330" x="1390" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#f4f5f6;strokeColor=#8c99a5;fontSize=17;fontStyle=1;spacing=18;align=left;" value="10. Clarify if ambiguous&lt;br&gt;&lt;br&gt;If multiple drafts match, execution stops and a clarification question is returned." vertex="1">
+          <mxGeometry height="120" width="330" x="1390" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="t3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9a6fb5;fontSize=17;fontStyle=1;spacing=18;align=left;" value="11. Update the draft&lt;br&gt;&lt;br&gt;If there is one valid match, the backend applies the rewritten content deterministically." vertex="1">
+          <mxGeometry height="120" width="330" x="1390" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="t4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9a6fb5;fontSize=17;fontStyle=1;spacing=18;align=left;" value="12. Schedule send&lt;br&gt;&lt;br&gt;The backend validates the future timestamp and transitions the draft to SCHEDULED." vertex="1">
+          <mxGeometry height="120" width="330" x="1390" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="t5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9a6fb5;fontSize=17;fontStyle=1;spacing=18;align=left;" value="13. Return execution result&lt;br&gt;&lt;br&gt;The backend returns the updated draft record and execution status." vertex="1">
+          <mxGeometry height="120" width="330" x="1390" y="1100" as="geometry" />
+        </mxCell>
+        <mxCell id="ui1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#59a17c;fontSize=17;fontStyle=1;spacing=18;align=left;" value="14. Final answer shown&lt;br&gt;&lt;br&gt;The user sees confirmation that Joe&#39;s draft was shortened and scheduled for tomorrow at 9." vertex="1">
+          <mxGeometry height="220" width="210" x="1875" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="ui2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#59a17c;fontSize=17;fontStyle=1;spacing=18;align=left;" value="15. Trace cards shown&lt;br&gt;&lt;br&gt;Planner family selection&lt;br&gt;Planner JSON&lt;br&gt;Validation result&lt;br&gt;Tool execution&lt;br&gt;Final answer generation" vertex="1">
+          <mxGeometry height="280" width="210" x="1875" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="u1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4d91b3;strokeWidth=3;endArrow=block;endFill=1;" target="o1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="o1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="o2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="o2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="l1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="l1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#cf9b47;strokeWidth=3;endArrow=block;endFill=1;" target="l2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="l2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#cf9b47;strokeWidth=3;endArrow=block;endFill=1;" target="o3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="o3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="o4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="o4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="l3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="l3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#cf9b47;strokeWidth=3;endArrow=block;endFill=1;" target="t1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1300" y="1055" />
+              <mxPoint x="1300" y="330" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9a6fb5;strokeWidth=3;endArrow=block;endFill=1;" target="t3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1555" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#8c99a5;strokeWidth=3;dashed=1;endArrow=block;endFill=1;" target="t2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="t3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9a6fb5;strokeWidth=3;endArrow=block;endFill=1;" target="t4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="t4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9a6fb5;strokeWidth=3;endArrow=block;endFill=1;" target="t5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="t5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#59a17c;strokeWidth=3;endArrow=block;endFill=1;" target="ui1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="ui1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#59a17c;strokeWidth=3;endArrow=block;endFill=1;" target="ui2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

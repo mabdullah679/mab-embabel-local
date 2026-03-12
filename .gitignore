@@ -1,0 +1,16 @@
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.nar
+**/node_modules/
+frontend/dist/
+.idea/
+.vscode/
+*.log
+*.out
+*.err
+.DS_Store
+Thumbs.db
+temp-*.log
+temp-*.err.log

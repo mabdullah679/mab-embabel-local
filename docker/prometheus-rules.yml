@@ -1,0 +1,49 @@
+groups:
+  - name: mab-local-http
+    rules:
+      - record: mab:http_requests:rate5m
+        expr: sum by (application, uri, method, status) (rate(http_server_requests_seconds_count[5m]))
+
+      - record: mab:http_requests_total:rate5m
+        expr: sum by (application) (rate(http_server_requests_seconds_count[5m]))
+
+      - record: mab:http_errors:rate5m
+        expr: sum by (application) (rate(http_server_requests_seconds_count{status=~"4..|5.."}[5m]))
+
+      - record: mab:http_error_ratio:rate5m
+        expr: mab:http_errors:rate5m / clamp_min(mab:http_requests_total:rate5m, 0.0001)
+
+      - record: mab:http_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (le, application, uri) (rate(http_server_requests_seconds_bucket[5m])))
+
+      - record: mab:http_latency_p50:5m
+        expr: histogram_quantile(0.50, sum by (le, application, uri) (rate(http_server_requests_seconds_bucket[5m])))
+
+      - record: mab:agent_query_rps:5m
+        expr: sum(rate(http_server_requests_seconds_count{application="orchestrator-app",uri="/agent/query"}[5m]))
+
+      - record: mab:agent_query_p95:5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application="orchestrator-app",uri="/agent/query"}[5m])))
+
+      - record: mab:tools_rag_ingest_rps:5m
+        expr: sum(rate(http_server_requests_seconds_count{application="tools-app",uri="/api/rag/ingest"}[5m]))
+
+      - record: mab:tools_calendar_read_rps:5m
+        expr: sum(rate(http_server_requests_seconds_count{application="tools-app",uri="/api/calendar/items"}[5m]))
+
+      - record: mab:tools_email_drafts_rps:5m
+        expr: sum(rate(http_server_requests_seconds_count{application="tools-app",uri="/api/email/drafts"}[5m]))
+
+  - name: mab-local-runtime
+    rules:
+      - record: mab:jvm_heap_used_bytes
+        expr: sum by (application) (jvm_memory_used_bytes{area="heap"})
+
+      - record: mab:jvm_heap_max_bytes
+        expr: sum by (application) (jvm_memory_max_bytes{area="heap"})
+
+      - record: mab:jvm_heap_used_ratio
+        expr: mab:jvm_heap_used_bytes / clamp_min(mab:jvm_heap_max_bytes, 1)
+
+      - record: mab:process_cpu_usage
+        expr: avg by (application) (process_cpu_usage)

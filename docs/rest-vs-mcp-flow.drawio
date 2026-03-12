@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.1">
+  <diagram id="restVsPlanner" name="REST vs Planner Execution">
+    <mxGraphModel dx="2305" dy="1103" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#17324d;" value="Browser REST Path vs Planner Execution Path" vertex="1">
+          <mxGeometry height="40" width="650" x="50" y="24" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=14;fontColor=#5f7385;" value="The browser still uses REST for direct editing; the orchestrator now uses strict planning plus deterministic execution instead of regex-driven CRUD." vertex="1">
+          <mxGeometry height="24" width="1100" x="50" y="62" as="geometry" />
+        </mxCell>
+        <mxCell id="leftPanel" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#eaf4fb;strokeColor=#4d91b3;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="820" width="860" x="30" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="rightPanel" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#eef8e8;strokeColor=#6d9f5b;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="820" width="1140" x="990" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="leftTitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;fontColor=#17324d;" value="Direct REST path" vertex="1">
+          <mxGeometry height="34" width="260" x="130" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="leftSub" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontColor=#5f7385;" value="Used by the frontend for explicit read / edit / delete operations." vertex="1">
+          <mxGeometry height="24" width="460" x="130" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="browser" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9dbdd1;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Frontend UI&lt;/b&gt;&lt;br&gt;calendar editor&lt;br&gt;email draft editor&lt;br&gt;contact manager" vertex="1">
+          <mxGeometry height="160" width="250" x="80" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="restApi" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9dbdd1;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Tools REST API&lt;/b&gt;&lt;br&gt;GET /api/email/drafts&lt;br&gt;PUT /api/email/drafts/{id}&lt;br&gt;POST /api/email/drafts/{id}/send&lt;br&gt;GET /api/calendar/items&lt;br&gt;PUT /api/calendar/items/{id}" vertex="1">
+          <mxGeometry height="240" width="310" x="450" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="restRepo" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#9dbdd1;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Repository + DB&lt;/b&gt;&lt;br&gt;perform explicit requested mutation&lt;br&gt;return updated record to UI" vertex="1">
+          <mxGeometry height="150" width="310" x="450" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="rightTitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;fontColor=#17324d;" value="Planner execution path" vertex="1">
+          <mxGeometry height="34" width="300" x="1020" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="rightSub" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontColor=#5f7385;" value="Used by the orchestrator for conversational requests that need interpretation and safe execution." vertex="1">
+          <mxGeometry height="24" width="620" x="1020" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="agentRequest" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#a9c49d;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;User prompt&lt;/b&gt;&lt;br&gt;&quot;make that email shorter and send it tomorrow at 9&quot;" vertex="1">
+          <mxGeometry height="150" width="280" x="1080" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="planner" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#a9c49d;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Orchestrator&lt;/b&gt;&lt;br&gt;deterministic family routing&lt;br&gt;LLM strict JSON plan&lt;br&gt;planner validation&lt;br&gt;optional email rewrite generation" vertex="1">
+          <mxGeometry height="210" width="360" x="1440" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="plannerRepo" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#a9c49d;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Repository + DB&lt;/b&gt;&lt;br&gt;query candidate drafts/items&lt;br&gt;persist only after validation succeeds" vertex="1">
+          <mxGeometry height="170" width="280" x="1080" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="plannerExec" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#a9c49d;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;POST /api/planner/execute&lt;/b&gt;&lt;br&gt;PlannerExecutionService&lt;br&gt;resolve target&lt;br&gt;validate fields&lt;br&gt;handle ambiguity&lt;br&gt;enforce allowed transitions" vertex="1">
+          <mxGeometry height="230" width="330" x="1455" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="trace" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#ffffff;strokeColor=#a9c49d;fontSize=17;align=left;spacing=20;" value="&lt;b&gt;Trace output&lt;/b&gt;&lt;br&gt;family selection&lt;br&gt;planner JSON&lt;br&gt;validation result&lt;br&gt;tool execution I/O&lt;br&gt;final answer generation" vertex="1">
+          <mxGeometry height="200" width="170" x="1930" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" edge="1" parent="1" source="browser" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4d91b3;strokeWidth=3;endArrow=block;endFill=1;" target="restApi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" edge="1" parent="1" source="restApi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4d91b3;strokeWidth=3;endArrow=block;endFill=1;" target="restRepo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" edge="1" parent="1" source="agentRequest" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="planner">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" edge="1" parent="1" source="planner" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;" target="plannerExec" value="strict planner JSON">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" edge="1" parent="1" source="plannerExec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;" target="plannerRepo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" edge="1" parent="1" source="plannerExec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;" target="trace" value="explainable result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

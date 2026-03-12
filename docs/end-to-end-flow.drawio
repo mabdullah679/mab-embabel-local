@@ -1,0 +1,81 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.1">
+  <diagram id="plannerFirst" name="End-to-End Flow">
+    <mxGraphModel dx="2712" dy="1298" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#17324d;" value="Planner-First End-to-End Flow" vertex="1">
+          <mxGeometry height="40" width="520" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=14;fontColor=#5f7385;" value="Latest architecture: deterministic family routing, strict planner JSON, validated backend execution, expanded traces." vertex="1">
+          <mxGeometry height="24" width="900" x="40" y="58" as="geometry" />
+        </mxCell>
+        <mxCell id="ui" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#eaf4fb;strokeColor=#4d91b3;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Frontend&lt;/b&gt;&lt;br&gt;Agent Console&lt;br&gt;Calendar Viewer&lt;br&gt;Email Mockup&lt;br&gt;Metadata Inspector&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px;color:#5f7385;&quot;&gt;Shows planner, validation, tool, and final-answer traces&lt;/font&gt;" vertex="1">
+          <mxGeometry height="240" width="250" x="40" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="orchestrator" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#eef8e8;strokeColor=#6d9f5b;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Orchestrator&lt;/b&gt;&lt;br&gt;1. Guardrails&lt;br&gt;2. Deterministic task-family detection&lt;br&gt;3. LLM strict JSON planner&lt;br&gt;4. Planner JSON validation&lt;br&gt;5. Optional email generation / rewrite&lt;br&gt;6. Final user-facing answer generation" vertex="1">
+          <mxGeometry height="300" width="330" x="400" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ollama" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#fff2de;strokeColor=#cf9b47;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Ollama&lt;/b&gt;&lt;br&gt;qwen2.5: planner JSON&lt;br&gt;qwen2.5: email drafting / rewriting&lt;br&gt;qwen2.5: final response&lt;br&gt;nomic-embed-text: embeddings for RAG" vertex="1">
+          <mxGeometry height="220" width="280" x="425" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#f7eefc;strokeColor=#9a6fb5;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Tools Service&lt;/b&gt;&lt;br&gt;Deterministic execution layer&lt;br&gt;&lt;br&gt;PlannerExecutionService&lt;br&gt;- validate required fields&lt;br&gt;- resolve draft / calendar targets&lt;br&gt;- detect ambiguity&lt;br&gt;- enforce state transitions&lt;br&gt;- execute CRUD&lt;br&gt;&lt;br&gt;Legacy REST APIs remain for UI editing" vertex="1">
+          <mxGeometry height="320" width="340" x="950" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="repo" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#fff8dc;strokeColor=#d0aa43;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Postgres + Repository Layer&lt;/b&gt;&lt;br&gt;calendar_events&lt;br&gt;email_drafts&lt;br&gt;contacts&lt;br&gt;metadata_objects&lt;br&gt;hardware_records&lt;br&gt;rag_source_documents&lt;br&gt;rag_document_chunks" vertex="1">
+          <mxGeometry height="220" width="340" x="1360" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="rag" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#e8f8f2;strokeColor=#59a17c;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;RAG Path&lt;/b&gt;&lt;br&gt;backend retrieval remains deterministic&lt;br&gt;dense + lexical search&lt;br&gt;fusion + rerank&lt;br&gt;context assembly&lt;br&gt;LLM only answers from assembled context" vertex="1">
+          <mxGeometry height="190" width="280" x="880" y="575" as="geometry" />
+        </mxCell>
+        <mxCell id="trace" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=14;fillColor=#f3f5f7;strokeColor=#8c99a5;fontSize=16;align=left;spacing=18;" value="&lt;b&gt;Trace Layers&lt;/b&gt;&lt;br&gt;planner family selection&lt;br&gt;planner JSON&lt;br&gt;planner validation&lt;br&gt;clarification or validation result&lt;br&gt;tool execution input/output&lt;br&gt;final answer generation" vertex="1">
+          <mxGeometry height="220" width="330" x="70" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="ui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2c7aa3;strokeWidth=3;endArrow=block;endFill=1;" target="orchestrator">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="orchestrator" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#cf9b47;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="ollama" value="plan / generate">
+          <mxGeometry relative="1" x="0.2308" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="orchestrator" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6d9f5b;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="tools" value="validated planner action">
+          <mxGeometry relative="1" x="0.0295" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="820" y="280" />
+              <mxPoint x="820" y="280" />
+            </Array>
+            <mxPoint x="609.9999999999998" y="139.69999999999982" as="sourcePoint" />
+            <mxPoint x="1161.1099999999992" y="127.44000000000005" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9a6fb5;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="repo" value="CRUD / lookups">
+          <mxGeometry relative="1" x="0.2692" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="rag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#59a17c;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="repo" value="retrieval + rerank support">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="rag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#59a17c;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="ollama" value="RAG answer synthesis">
+          <mxGeometry relative="1" x="-0.0857" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="820" y="670" />
+              <mxPoint x="820" y="670" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="trace" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#8c99a5;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="ui" value="trace payloads to UI">
+          <mxGeometry relative="1" x="0.5" y="5" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="orchestrator" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#8c99a5;strokeWidth=3;endArrow=block;endFill=1;fontSize=11;" target="trace" value="planner + execution traces">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: tools-app
+  ai:
+    mcp:
+      server:
+        name: mab-tools-mcp
+        version: 1.0.0
+        instructions: MCP server for email, calendar, metadata, hardware, and RAG tools.
+        type: SYNC
+        protocol: SSE
+        sse-endpoint: /sse
+        sse-message-endpoint: /mcp/message
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mab}
+    username: ${SPRING_DATASOURCE_USERNAME:mab}
+    password: ${SPRING_DATASOURCE_PASSWORD:mab}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}    
