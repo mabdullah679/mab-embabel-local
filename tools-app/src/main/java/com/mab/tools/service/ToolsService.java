@@ -174,6 +174,47 @@ public class ToolsService {
         return new HardwareInventoryResponse(repository.searchHardware(request.deviceName()));
     }
 
+    public RecordLookupResponse lookupRecords(RecordLookupRequest request) {
+        String recordType = normalizeRecordType(request.recordType());
+        String itemType = normalizeNullableUpper(request.itemType());
+        String recordId = normalizeNullable(request.recordId());
+        String date = normalizeNullable(request.date());
+        String referenceText = normalizeNullable(request.referenceText());
+        String sortBy = normalizeSortBy(request.sortBy(), recordType);
+        String sortDirection = normalizeSortDirection(request.sortDirection());
+        int limit = request.limit() == null || request.limit() < 1 ? 5 : Math.min(request.limit(), 20);
+        boolean includeDetails = request.includeDetails();
+
+        List<RecordLookupMatch> matches = new ArrayList<>();
+        if (!"email_draft".equals(recordType)) {
+            matches.addAll(queryCalendarMatches(itemType, recordId, date, referenceText));
+        }
+        if (!"calendar_item".equals(recordType)) {
+            matches.addAll(queryEmailMatches(recordId, referenceText));
+        }
+
+        Comparator<RecordLookupMatch> comparator = comparatorFor(sortBy, sortDirection);
+        List<RecordLookupMatch> sorted = matches.stream()
+                .sorted(comparator)
+                .limit(limit)
+                .map(match -> includeDetails ? match : redactMatch(match))
+                .toList();
+
+        return new RecordLookupResponse(
+                request.queryText(),
+                recordType,
+                itemType,
+                recordId,
+                date,
+                sortBy,
+                sortDirection,
+                includeDetails,
+                matches.size(),
+                sorted.isEmpty() ? null : sorted.getFirst(),
+                sorted
+        );
+    }
+
     public RagRetrievalResponse retrieveRag(RagRetrievalRequest request) {
         List<Double> embedding = embed(request.queryText());
         String vectorLiteral = toPgVector(embedding);
@@ -627,6 +668,146 @@ public class ToolsService {
         }
         builder.append(']');
         return builder.toString();
+    }
+
+    private List<RecordLookupMatch> queryCalendarMatches(String itemType, String recordId, String date, String referenceText) {
+        return repository.listCalendarItems().stream()
+                .filter(item -> recordId == null || item.id().equalsIgnoreCase(recordId))
+                .filter(item -> recordId != null || itemType == null || item.itemType().equalsIgnoreCase(itemType))
+                .filter(item -> recordId != null || date == null || item.date().equals(date))
+                .filter(item -> recordId != null || referenceText == null
+                        || contains(item.title(), referenceText)
+                        || contains(item.notes(), referenceText)
+                        || item.id().equalsIgnoreCase(referenceText))
+                .map(item -> new RecordLookupMatch(
+                        "calendar_item",
+                        item.id(),
+                        item.title(),
+                        null,
+                        item.title(),
+                        item.date(),
+                        item.time(),
+                        item.status(),
+                        item.itemType(),
+                        null,
+                        null,
+                        item.notes(),
+                        item.createdAt(),
+                        item.createdAt()
+                ))
+                .toList();
+    }
+
+    private List<RecordLookupMatch> queryEmailMatches(String recordId, String referenceText) {
+        return repository.listEmailDrafts().stream()
+                .filter(draft -> recordId == null || draft.id().equalsIgnoreCase(recordId))
+                .filter(draft -> recordId != null || referenceText == null
+                        || contains(draft.subject(), referenceText)
+                        || contains(draft.body(), referenceText)
+                        || contains(draft.recipient(), referenceText)
+                        || draft.id().equalsIgnoreCase(referenceText))
+                .map(draft -> new RecordLookupMatch(
+                        "email_draft",
+                        draft.id(),
+                        null,
+                        draft.subject(),
+                        draft.body(),
+                        null,
+                        null,
+                        draft.status(),
+                        null,
+                        draft.recipient(),
+                        draft.senderName(),
+                        null,
+                        draft.createdAt(),
+                        draft.updatedAt()
+                ))
+                .toList();
+    }
+
+    private Comparator<RecordLookupMatch> comparatorFor(String sortBy, String sortDirection) {
+        Comparator<RecordLookupMatch> comparator = switch (sortBy) {
+            case "created_at" -> Comparator.comparing(RecordLookupMatch::createdAt, Comparator.nullsLast(String::compareToIgnoreCase));
+            case "updated_at" -> Comparator.comparing(RecordLookupMatch::updatedAt, Comparator.nullsLast(String::compareToIgnoreCase));
+            case "time" -> Comparator.comparing(RecordLookupMatch::time, Comparator.nullsLast(String::compareToIgnoreCase))
+                    .thenComparing(RecordLookupMatch::date, Comparator.nullsLast(String::compareToIgnoreCase));
+            case "date" -> Comparator.comparing(RecordLookupMatch::date, Comparator.nullsLast(String::compareToIgnoreCase))
+                    .thenComparing(RecordLookupMatch::time, Comparator.nullsLast(String::compareToIgnoreCase));
+            default -> Comparator.comparing(RecordLookupMatch::date, Comparator.nullsLast(String::compareToIgnoreCase))
+                    .thenComparing(RecordLookupMatch::time, Comparator.nullsLast(String::compareToIgnoreCase))
+                    .thenComparing(RecordLookupMatch::createdAt, Comparator.nullsLast(String::compareToIgnoreCase));
+        };
+        if ("desc".equals(sortDirection)) {
+            return comparator.reversed();
+        }
+        return comparator;
+    }
+
+    private RecordLookupMatch redactMatch(RecordLookupMatch match) {
+        if (match == null) {
+            return null;
+        }
+        return new RecordLookupMatch(
+                match.recordType(),
+                match.recordId(),
+                match.title(),
+                match.subject(),
+                match.content(),
+                match.date(),
+                match.time(),
+                match.status(),
+                match.itemType(),
+                match.recipient(),
+                match.senderName(),
+                null,
+                match.createdAt(),
+                match.updatedAt()
+        );
+    }
+
+    private String normalizeRecordType(String value) {
+        String normalized = normalizeNullableLower(value);
+        return switch (normalized) {
+            case "calendar", "calendar_item", "event", "reminder", "task", "meeting" -> "calendar_item";
+            case "email", "email_draft", "draft" -> "email_draft";
+            default -> "all";
+        };
+    }
+
+    private String normalizeSortBy(String value, String recordType) {
+        String normalized = normalizeNullableLower(value);
+        if (normalized == null) {
+            return "calendar_item".equals(recordType) ? "time" : "updated_at";
+        }
+        return switch (normalized) {
+            case "date", "time", "created_at", "updated_at" -> normalized;
+            default -> "calendar_item".equals(recordType) ? "time" : "updated_at";
+        };
+    }
+
+    private String normalizeSortDirection(String value) {
+        return "asc".equalsIgnoreCase(normalizeNullable(value)) ? "asc" : "desc";
+    }
+
+    private String normalizeNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String normalizeNullableLower(String value) {
+        String normalized = normalizeNullable(value);
+        return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeNullableUpper(String value) {
+        String normalized = normalizeNullable(value);
+        return normalized == null ? null : normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean contains(String value, String search) {
+        return value != null && search != null && value.toLowerCase(Locale.ROOT).contains(search.toLowerCase(Locale.ROOT));
     }
 
     private static final class CandidateState {

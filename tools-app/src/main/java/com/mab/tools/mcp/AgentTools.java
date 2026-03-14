@@ -38,4 +38,9 @@ public class AgentTools {
     public RagRetrievalResponse retrieveRagDocuments(RagRetrievalRequest request) {
         return toolsService.retrieveRag(request);
     }
+
+    @Tool(name = "lookup_records", description = "Query persisted calendar items and email drafts by date, type, title, subject, or record id.")
+    public RecordLookupResponse lookupRecords(RecordLookupRequest request) {
+        return toolsService.lookupRecords(request);
+    }
 }

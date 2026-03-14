@@ -53,6 +53,10 @@ public class ToolsClient {
         return invokeTool("retrieve_rag_documents", request, RagRetrievalResponse.class);
     }
 
+    public RecordLookupResponse lookupRecords(RecordLookupRequest request) {
+        return invokeTool("lookup_records", request, RecordLookupResponse.class);
+    }
+
     public CalendarItemsResponse calendarItems() {
         return get("/api/calendar/items", CalendarItemsResponse.class);
     }
