@@ -14,3 +14,7 @@ frontend/dist/
 Thumbs.db
 temp-*.log
 temp-*.err.log
+shared-models/releases/*.zip
+shared-models/releases/*.zip.part*
+shared-models/releases/*.sha256
+shared-models/releases/release-notes-*.txt
