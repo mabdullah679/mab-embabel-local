@@ -21,30 +21,30 @@ Produce a fresh `PLAN.md` that:
 
 Before writing `PLAN.md`, you must inspect these files:
 
-- [README.md](/C:/Users/muham/Documents/mab-embabel-local/README.md)
-- [DEPLOY.md](/C:/Users/muham/Documents/mab-embabel-local/DEPLOY.md)
-- [PLAN.md](/C:/Users/muham/Documents/mab-embabel-local/PLAN.md)
-- [external-user-ux-hiccups.md](/C:/Users/muham/Documents/mab-embabel-local/external-user-ux-hiccups.md)
-- [scripts/deploy.py](/C:/Users/muham/Documents/mab-embabel-local/scripts/deploy.py)
+- [README.md](./README.md)
+- [DEPLOY.md](./DEPLOY.md)
+- [PLAN.md](./PLAN.md)
+- [external-user-ux-hiccups.md](./external-user-ux-hiccups.md)
+- [scripts/deploy.py](./scripts/deploy.py)
 
 Then inspect the current implementation areas:
 
-- [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java)
-- [OllamaClient.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/client/OllamaClient.java)
-- [ToolsClient.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/client/ToolsClient.java)
-- [ToolsService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/ToolsService.java)
-- [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java)
-- [ToolRepository.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/repository/ToolRepository.java)
-- [ToolController.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/controller/ToolController.java)
-- [App.jsx](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/App.jsx)
-- [styles.css](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/styles.css)
-- [SystemStateResponse.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/SystemStateResponse.java)
+- [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java)
+- [OllamaClient.java](./orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java)
+- [ToolsClient.java](./orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java)
+- [ToolsService.java](./tools-app/src/main/java/com/domain/tools/service/ToolsService.java)
+- [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java)
+- [ToolRepository.java](./tools-app/src/main/java/com/domain/tools/repository/ToolRepository.java)
+- [ToolController.java](./tools-app/src/main/java/com/domain/tools/controller/ToolController.java)
+- [App.jsx](./frontend/src/App.jsx)
+- [styles.css](./frontend/src/styles.css)
+- [SystemStateResponse.java](./shared-models/src/main/java/com/domain/shared/model/SystemStateResponse.java)
 
 Also inspect the current tests:
 
-- [PlannerAgentServiceTest.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/test/java/com/mab/orchestrator/service/PlannerAgentServiceTest.java)
-- [PlannerExecutionServiceTest.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/test/java/com/mab/tools/service/PlannerExecutionServiceTest.java)
-- [ToolsServiceTest.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/test/java/com/mab/tools/service/ToolsServiceTest.java)
+- [PlannerAgentServiceTest.java](./orchestrator-app/src/test/java/com/domain/orchestrator/service/PlannerAgentServiceTest.java)
+- [PlannerExecutionServiceTest.java](./tools-app/src/test/java/com/domain/tools/service/PlannerExecutionServiceTest.java)
+- [ToolsServiceTest.java](./tools-app/src/test/java/com/domain/tools/service/ToolsServiceTest.java)
 
 ## What To Analyze
 
@@ -199,11 +199,11 @@ If something is fixed already, say that clearly and do not keep it in the must-f
 
 Your deliverable for this analysis phase is:
 
-- an updated [PLAN.md](/C:/Users/muham/Documents/mab-embabel-local/PLAN.md)
+- an updated [PLAN.md](./PLAN.md)
 
 Optional but useful if warranted:
 
-- short additions to [external-user-ux-hiccups.md](/C:/Users/muham/Documents/mab-embabel-local/external-user-ux-hiccups.md) if you discover new externally visible failures worth preserving as evidence
+- short additions to [external-user-ux-hiccups.md](./external-user-ux-hiccups.md) if you discover new externally visible failures worth preserving as evidence
 
 ## Guardrails
 
@@ -212,3 +212,6 @@ Optional but useful if warranted:
 - Do not remove deterministic validation in the name of making the app seem smarter.
 - Do not hide backend failure with a nicer-sounding answer.
 - Prefer direct, testable fixes over more model complexity unless the evidence supports it.
+
+
+

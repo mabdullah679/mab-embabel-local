@@ -40,16 +40,16 @@ What I did not reproduce as a current live defect:
      - A prior persisted draft still contains placeholders like `[specific time and platform]` and `[Your Name]`.
      - Calendar create/update answers restated backend results conversationally instead of staying tightly bound to persisted fields.
    - Root-cause hypothesis:
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) `addGeneratedEmailContent(...)` asks the model to write a draft with no hard grounding constraints.
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) `finalizeAnswer(...)` asks for a free-form concise answer from `Backend result` and does not require field-preserving output.
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) `summarizeExecutionResult(...)` emits prose instead of a structured grounded response contract.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) `addGeneratedEmailContent(...)` asks the model to write a draft with no hard grounding constraints.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) `finalizeAnswer(...)` asks for a free-form concise answer from `Backend result` and does not require field-preserving output.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) `summarizeExecutionResult(...)` emits prose instead of a structured grounded response contract.
 
 2. Email clarification continuity is broken for short follow-up replies.
    - Observed symptom:
      - `Draft an email to Joe about tomorrow's check-in.` returned `Who should the sender be for that email?`
      - Follow-up `John Doe.` routed to `unsupported` instead of continuing the email workflow.
    - Root-cause hypothesis:
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) `looksLikeNameOnlyResponse(...)` checks `NAME_ONLY_PATTERN` against lowercased input, so `John Doe.` becomes `john doe.` and fails the uppercase-only regex.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) `looksLikeNameOnlyResponse(...)` checks `NAME_ONLY_PATTERN` against lowercased input, so `John Doe.` becomes `john doe.` and fails the uppercase-only regex.
      - Continuation recovery depends on raw assistant text in history instead of a structured pending clarification state.
 
 3. Calendar follow-up disambiguation by title/date/time is still brittle.
@@ -57,15 +57,15 @@ What I did not reproduce as a current live defect:
      - `Change the task type from meeting to reminder.` correctly entered calendar update flow but returned clarification.
      - Follow-up `the one titled "Project Sync" for today 4 pm` still failed with `I couldn't identify which calendar item to update.`
    - Root-cause hypothesis:
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) accepts planner outputs where `targetLookup` is sometimes a string marker like `"titleLike"` instead of a populated object.
-     - [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java) `matchCalendarItems(...)` only uses `targetEntityId` for UUIDs and ignores non-UUID title references stored there.
-     - [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java) does not merge title/date/time clues from malformed planner outputs into a normalized lookup contract before matching.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) accepts planner outputs where `targetLookup` is sometimes a string marker like `"titleLike"` instead of a populated object.
+     - [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java) `matchCalendarItems(...)` only uses `targetEntityId` for UUIDs and ignores non-UUID title references stored there.
+     - [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java) does not merge title/date/time clues from malformed planner outputs into a normalized lookup contract before matching.
 
 4. Calendar item type intent is still lost in deterministic execution.
    - Observed symptom:
      - `Create a reminder titled "Pay rent" for today 12 pm.` returned a reminder-style answer, but the persisted item was `itemType = MEETING`.
    - Root-cause hypothesis:
-     - [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java) `createCalendarItem(...)` only respects `arguments.itemType` or `targetLookup.itemType`.
+     - [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java) `createCalendarItem(...)` only respects `arguments.itemType` or `targetLookup.itemType`.
      - Common planner variants such as `targetEntityType = calendarItem`, `taskType = reminder`, or reminder semantics in the user intent are not normalized into `itemType`.
 
 5. Contact resolution still over-matches and duplicates recipients/participants.
@@ -73,14 +73,14 @@ What I did not reproduce as a current live defect:
      - Creating an email for `Joe` persisted `joe@example.local, joe@example.com`.
      - Creating a meeting with `Alex` persisted both `alex@example.local` and `alex@example.com`.
    - Root-cause hypothesis:
-     - [ToolRepository.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/repository/ToolRepository.java) `findContactsByNames(...)` matches both full name and first-name-only, which explodes when multiple contacts share a first name.
-     - [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java) `resolveRecipients(...)` and `resolveParticipants(...)` treat all matches as acceptable instead of raising ambiguity.
+     - [ToolRepository.java](./tools-app/src/main/java/com/domain/tools/repository/ToolRepository.java) `findContactsByNames(...)` matches both full name and first-name-only, which explodes when multiple contacts share a first name.
+     - [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java) `resolveRecipients(...)` and `resolveParticipants(...)` treat all matches as acceptable instead of raising ambiguity.
 
 6. Email update/rewrite behavior is not deterministic enough.
    - Observed symptom:
      - `Update draft ID ... to make it shorter.` sometimes returned a polished shorter version in the final answer even though the persisted draft did not clearly change, and on a later run asked for extra clarification instead of applying a safe rewrite.
    - Root-cause hypothesis:
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) `requiresRewrite(...)` only recognizes a narrow set of rewrite markers.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) `requiresRewrite(...)` only recognizes a narrow set of rewrite markers.
      - Planner outputs such as `makeItShorter`, `action=shorten`, or similar variants are not normalized before execution.
      - The final answer generator can present a rewritten draft even when the backend result was only clarification.
 
@@ -90,8 +90,8 @@ What I did not reproduce as a current live defect:
    - Observed symptom:
      - Live traces show `targetLookup` alternating between an object and bare strings like `"draftReference"`, `"titleLike"`, and `"itemType"`.
    - Root-cause hypothesis:
-     - [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java) validates only `taskFamily` and `action`, not planner contract shape.
-     - [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java) compensates partially but not enough for malformed planner payloads.
+     - [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java) validates only `taskFamily` and `action`, not planner contract shape.
+     - [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java) compensates partially but not enough for malformed planner payloads.
 
 8. UX continuity is still built on conversational text instead of explicit pending-task state.
    - Observed symptom:
@@ -102,9 +102,9 @@ What I did not reproduce as a current live defect:
 
 9. Frontend truth alignment is partly present but not fully hardened.
    - Observed symptom:
-     - The UI likely benefits from timeout/slow/stopped states already in [App.jsx](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/App.jsx), but there is no explicit rendering contract that distinguishes `clarification`, `validation error`, and `completed mutation` from backend state.
+     - The UI likely benefits from timeout/slow/stopped states already in [App.jsx](./frontend/src/App.jsx), but there is no explicit rendering contract that distinguishes `clarification`, `validation error`, and `completed mutation` from backend state.
    - Root-cause hypothesis:
-     - [App.jsx](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/App.jsx) renders the assistant result as a single text blob plus traces, which leaves the primary UX dependent on generated wording instead of structured mutation outcome.
+     - [App.jsx](./frontend/src/App.jsx) renders the assistant result as a single text blob plus traces, which leaves the primary UX dependent on generated wording instead of structured mutation outcome.
 
 ### Optional Improvements
 
@@ -122,9 +122,9 @@ What I did not reproduce as a current live defect:
 
 Files/components:
 
-- [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java)
-- [PlannerActionPlan.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/PlannerActionPlan.java)
-- [PlannerLookup.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/PlannerLookup.java)
+- [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java)
+- [PlannerActionPlan.java](./shared-models/src/main/java/com/domain/shared/model/PlannerActionPlan.java)
+- [PlannerLookup.java](./shared-models/src/main/java/com/domain/shared/model/PlannerLookup.java)
 - Planner-related shared DTOs if needed
 
 Implementation:
@@ -151,10 +151,10 @@ Acceptance criteria:
 
 Files/components:
 
-- [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java)
-- [AgentQueryResponse.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/AgentQueryResponse.java)
-- [ConversationTurn.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/ConversationTurn.java)
-- [App.jsx](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/App.jsx)
+- [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java)
+- [AgentQueryResponse.java](./shared-models/src/main/java/com/domain/shared/model/AgentQueryResponse.java)
+- [ConversationTurn.java](./shared-models/src/main/java/com/domain/shared/model/ConversationTurn.java)
+- [App.jsx](./frontend/src/App.jsx)
 
 Implementation:
 
@@ -173,8 +173,8 @@ Acceptance criteria:
 
 Files/components:
 
-- [PlannerExecutionService.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/service/PlannerExecutionService.java)
-- [ToolRepository.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/repository/ToolRepository.java)
+- [PlannerExecutionService.java](./tools-app/src/main/java/com/domain/tools/service/PlannerExecutionService.java)
+- [ToolRepository.java](./tools-app/src/main/java/com/domain/tools/repository/ToolRepository.java)
 
 Implementation:
 
@@ -204,8 +204,8 @@ Acceptance criteria:
 
 Files/components:
 
-- [PlannerAgentService.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/service/PlannerAgentService.java)
-- [OllamaClient.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/client/OllamaClient.java)
+- [PlannerAgentService.java](./orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java)
+- [OllamaClient.java](./orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java)
 
 Implementation:
 
@@ -233,9 +233,9 @@ Acceptance criteria:
 
 Files/components:
 
-- [App.jsx](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/App.jsx)
-- [styles.css](/C:/Users/muham/Documents/mab-embabel-local/frontend/src/styles.css)
-- [SystemStateResponse.java](/C:/Users/muham/Documents/mab-embabel-local/shared-models/src/main/java/com/mab/shared/model/SystemStateResponse.java)
+- [App.jsx](./frontend/src/App.jsx)
+- [styles.css](./frontend/src/styles.css)
+- [SystemStateResponse.java](./shared-models/src/main/java/com/domain/shared/model/SystemStateResponse.java)
 
 Implementation:
 
@@ -260,8 +260,8 @@ Acceptance criteria:
 
 Add or extend tests in:
 
-- [PlannerAgentServiceTest.java](/C:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/test/java/com/mab/orchestrator/service/PlannerAgentServiceTest.java)
-- [PlannerExecutionServiceTest.java](/C:/Users/muham/Documents/mab-embabel-local/tools-app/src/test/java/com/mab/tools/service/PlannerExecutionServiceTest.java)
+- [PlannerAgentServiceTest.java](./orchestrator-app/src/test/java/com/domain/orchestrator/service/PlannerAgentServiceTest.java)
+- [PlannerExecutionServiceTest.java](./tools-app/src/test/java/com/domain/tools/service/PlannerExecutionServiceTest.java)
 - add new tests for final-answer rendering if needed
 
 Required tests:
@@ -358,3 +358,6 @@ Run after each major phase:
 - Treat the current must-fix list above as the real product backlog.
 - Do not hide deterministic failures behind friendlier LLM prose.
 - If a defect is not reproducible after the above fixes, remove it from the must-fix list rather than carrying it forward.
+
+
+

@@ -1,18 +1,18 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: mab-postgres
+    container_name: domain-postgres
     environment:
-      POSTGRES_DB: mab
-      POSTGRES_USER: mab
-      POSTGRES_PASSWORD: mab
+      POSTGRES_DB: domain
+      POSTGRES_USER: domain
+      POSTGRES_PASSWORD: domain
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mab -d mab"]
+      test: ["CMD-SHELL", "pg_isready -U domain -d domain"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,12 +21,12 @@ services:
     build:
       context: .
       dockerfile: tools-app/Dockerfile
-    container_name: mab-tools-app
+    container_name: domain-tools-app
     environment:
       SERVER_PORT: 8082
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mab
-      SPRING_DATASOURCE_USERNAME: mab
-      SPRING_DATASOURCE_PASSWORD: mab
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/domain
+      SPRING_DATASOURCE_USERNAME: domain
+      SPRING_DATASOURCE_PASSWORD: domain
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_GENERATION_MODEL: ${OLLAMA_GENERATION_MODEL:-qwen2.5:7b-instruct}
       OLLAMA_FALLBACK_MODEL: ${OLLAMA_FALLBACK_MODEL:-qwen2.5:3b}
@@ -51,7 +51,7 @@ services:
     build:
       context: .
       dockerfile: orchestrator-app/Dockerfile
-    container_name: mab-orchestrator-app
+    container_name: domain-orchestrator-app
     environment:
       SERVER_PORT: 8081
       TOOLS_BASE_URL: http://tools-app:8082
@@ -76,16 +76,16 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: mab-prometheus
+    container_name: domain-prometheus
     ports:
       - "9090:9090"
     volumes:
       - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./docker/prometheus-rules.yml:/etc/prometheus/rules/mab-rules.yml:ro
+      - ./docker/prometheus-rules.yml:/etc/prometheus/rules/domain-rules.yml:ro
 
   grafana:
     image: grafana/grafana:latest
-    container_name: mab-grafana
+    container_name: domain-grafana
     ports:
       - "3000:3000"
     environment:
@@ -100,7 +100,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: mab-frontend
+    container_name: domain-frontend
     ports:
       - "5173:80"
     depends_on:
@@ -110,3 +110,4 @@ services:
 volumes:
   postgres_data:
   grafana_data:
+

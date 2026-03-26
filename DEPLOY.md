@@ -20,13 +20,13 @@ The stack includes:
 
 ## Deployment Strategies
 
-The launcher in [scripts/deploy.py](/C:/Users/muham/Documents/mab-embabel-local/scripts/deploy.py) selects one of these strategies:
+The launcher in [scripts/deploy.py](./scripts/deploy.py) selects one of these strategies:
 
 ### 1. Windows/Linux with NVIDIA available
 
 Uses:
-- [docker-compose.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.yml)
-- [docker-compose.nvidia.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.nvidia.yml)
+- [docker-compose.yml](./docker-compose.yml)
+- [docker-compose.nvidia.yml](./docker-compose.nvidia.yml)
 
 Behavior:
 - runs Ollama in Docker
@@ -36,8 +36,8 @@ Behavior:
 ### 2. Apple Silicon macOS
 
 Uses:
-- [docker-compose.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.yml)
-- [docker-compose.host-ollama.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.host-ollama.yml)
+- [docker-compose.yml](./docker-compose.yml)
+- [docker-compose.host-ollama.yml](./docker-compose.host-ollama.yml)
 
 Behavior:
 - expects Ollama to run natively on the Mac host
@@ -184,8 +184,8 @@ Check Ollama models:
 NVIDIA-container strategy:
 
 ```bash
-docker exec mab-ollama ollama list
-docker exec mab-ollama ollama ps
+docker exec domain-ollama ollama list
+docker exec domain-ollama ollama ps
 ```
 
 Host-Ollama strategy:
@@ -253,8 +253,8 @@ nvidia-smi
 Verify in the container:
 
 ```bash
-docker exec mab-ollama nvidia-smi
-docker exec mab-ollama ollama ps
+docker exec domain-ollama nvidia-smi
+docker exec domain-ollama ollama ps
 ```
 
 If `ollama ps` shows `PROCESSOR 100% CPU`, GPU passthrough is not active yet.
@@ -264,9 +264,9 @@ If `ollama ps` shows `PROCESSOR 100% CPU`, GPU passthrough is not active yet.
 Check logs:
 
 ```bash
-docker logs -f mab-orchestrator-app
-docker logs -f mab-tools-app
-docker logs -f mab-ollama
+docker logs -f domain-orchestrator-app
+docker logs -f domain-tools-app
+docker logs -f domain-ollama
 ```
 
 The app containers now wait on actuator readiness healthchecks, so first boot should be deterministic. If startup still stalls, inspect:
@@ -283,8 +283,10 @@ powershell -ExecutionPolicy Bypass -File scripts/seed-rag.ps1
 
 ## Deployment Files
 
-- [docker-compose.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.yml)
-- [docker-compose.nvidia.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.nvidia.yml)
-- [docker-compose.host-ollama.yml](/C:/Users/muham/Documents/mab-embabel-local/docker-compose.host-ollama.yml)
-- [scripts/deploy.py](/C:/Users/muham/Documents/mab-embabel-local/scripts/deploy.py)
-- [Makefile](/C:/Users/muham/Documents/mab-embabel-local/Makefile)
+- [docker-compose.yml](./docker-compose.yml)
+- [docker-compose.nvidia.yml](./docker-compose.nvidia.yml)
+- [docker-compose.host-ollama.yml](./docker-compose.host-ollama.yml)
+- [scripts/deploy.py](./scripts/deploy.py)
+- [Makefile](./Makefile)
+
+

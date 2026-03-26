@@ -1,0 +1,51 @@
+How we packaged the Ollama models for this repo
+===============================================
+
+We needed the models on a machine that could not freely pull from the internet.
+
+What we did on the source machine
+---------------------------------
+1. We downloaded the open source models into Ollama.
+   - qwen2.5:14b
+   - qwen2.5:7b-instruct
+   - qwen2.5:3b
+   - nomic-embed-text
+
+2. We copied the Ollama model files from the local Ollama storage.
+   We kept:
+   - the manifest files
+   - the blob files those manifests pointed to
+
+3. We packed those files into one zip file.
+
+4. GitHub would not accept one very large release file, so we split the zip into smaller parts under 2 GB each.
+
+5. We uploaded those split files to the GitHub Releases page instead of relying on the repository zip download.
+
+Why we used Releases
+--------------------
+The repository zip download did not bring down the full large-model files correctly.
+It only gave tiny pointer files for the large assets.
+Release assets gave us the real bytes.
+
+What we did on the restricted test machine
+------------------------------------------
+1. We downloaded the split release files from the GitHub Releases page.
+
+2. We joined the parts back into one zip file.
+   Example in macOS shell:
+
+   cat ./ollama-model-bundle...zip.part* > ./ollama-model-bundle.zip
+
+3. We extracted the rebuilt zip.
+
+4. We copied the extracted `models\blobs` and `models\manifests` folders into the Ollama models directory on the test machine.
+
+5. We restarted Ollama and checked `ollama list` to confirm the models were available.
+
+Why this worked
+---------------
+- The models stayed open source.
+- The restricted machine did not need to pull the models directly from public model registries.
+- GitHub Releases carried the real split files.
+- Rebuilding the zip on the test machine gave us the same packaged model bundle we made on the source machine.

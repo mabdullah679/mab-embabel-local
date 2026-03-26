@@ -76,9 +76,9 @@ The system uses real Spring MCP over SSE between the orchestrator and tools serv
 
 The main code locations are:
 
-- [AgentTools.java](/c:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/mcp/AgentTools.java)
-- [McpToolConfiguration.java](/c:/Users/muham/Documents/mab-embabel-local/tools-app/src/main/java/com/mab/tools/config/McpToolConfiguration.java)
-- [ToolsClient.java](/c:/Users/muham/Documents/mab-embabel-local/orchestrator-app/src/main/java/com/mab/orchestrator/client/ToolsClient.java)
+- [AgentTools.java](./tools-app/src/main/java/com/domain/tools/mcp/AgentTools.java)
+- [McpToolConfiguration.java](./tools-app/src/main/java/com/domain/tools/config/McpToolConfiguration.java)
+- [ToolsClient.java](./orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java)
 
 Browser traffic still uses normal REST APIs. The browser is not an MCP client.
 
@@ -172,3 +172,6 @@ The main request flow is:
 ## One-Line Summary
 
 This is a local agent system where a Spring orchestrator plans, a Spring MCP tools service executes, Ollama handles generation and embeddings, Postgres stores both application and RAG data, and the frontend exposes both answers and retrieval internals.
+
+
+

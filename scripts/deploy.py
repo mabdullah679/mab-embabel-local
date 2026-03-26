@@ -203,7 +203,7 @@ def detect_strategy() -> tuple[str, list[Path], dict[str, str]]:
     system = platform.system().lower()
     machine = platform.machine().lower()
     env = os.environ.copy()
-    env.setdefault("COMPOSE_PROJECT_NAME", "mab-embabel-local")
+    env.setdefault("COMPOSE_PROJECT_NAME", "domains-api")
 
     if system == "darwin" and machine in {"arm64", "aarch64"}:
         env["OLLAMA_BASE_URL"] = "http://host.docker.internal:11434"
@@ -235,7 +235,7 @@ def pull_models(strategy: str, env: dict[str, str]) -> None:
     ]
     if strategy == "nvidia-container-ollama":
         for model in models:
-            run(["docker", "exec", "mab-ollama", "ollama", "pull", model])
+            run(["docker", "exec", "domain-ollama", "ollama", "pull", model])
         return
 
     if not is_command_available("ollama"):
@@ -379,7 +379,7 @@ def bootstrap(strategy: str, files: list[Path], env: dict[str, str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Dynamic deployment orchestrator for mab-embabel-local")
+    parser = argparse.ArgumentParser(description="Dynamic deployment orchestrator for domains-api")
     parser.add_argument("command", choices=["plan", "preflight", "up", "rebuild", "down", "ps", "bootstrap"])
     args = parser.parse_args()
 
@@ -425,3 +425,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

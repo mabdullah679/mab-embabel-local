@@ -37,9 +37,9 @@ try {
     -ArgumentList @(
       "-jar", "tools-app\target\tools-app-0.1.0-SNAPSHOT.jar",
       "--server.port=$ToolsPort",
-      "--spring.datasource.url=jdbc:postgresql://localhost:5432/mab",
-      "--spring.datasource.username=mab",
-      "--spring.datasource.password=mab",
+      "--spring.datasource.url=jdbc:postgresql://localhost:5432/domain",
+      "--spring.datasource.username=domain",
+      "--spring.datasource.password=domain",
       "--ollama.base-url=http://localhost:11434"
     )
 
@@ -71,3 +71,5 @@ finally {
     Stop-Process -Id $toolsProc.Id -Force
   }
 }
+
+

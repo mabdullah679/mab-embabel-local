@@ -7,7 +7,7 @@ spring:
   ai:
     mcp:
       server:
-        name: mab-tools-mcp
+        name: domain-tools-mcp
         version: 1.0.0
         instructions: MCP server for email, calendar, metadata, hardware, and RAG tools.
         type: SYNC
@@ -15,9 +15,9 @@ spring:
         sse-endpoint: /sse
         sse-message-endpoint: /mcp/message
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mab}
-    username: ${SPRING_DATASOURCE_USERNAME:mab}
-    password: ${SPRING_DATASOURCE_PASSWORD:mab}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/domain}
+    username: ${SPRING_DATASOURCE_USERNAME:domain}
+    password: ${SPRING_DATASOURCE_PASSWORD:domain}
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -49,3 +49,5 @@ ollama:
   embedding-model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
   connect-timeout: ${OLLAMA_CONNECT_TIMEOUT:4s}
   read-timeout: ${OLLAMA_READ_TIMEOUT:45s}
+
+

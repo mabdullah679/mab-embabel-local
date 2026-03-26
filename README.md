@@ -1,8 +1,8 @@
-# MAB Embabel Local
+# domains-api
 
 Local-first agent stack with a Spring orchestrator, a Spring MCP tools service, Ollama, Postgres + pgvector, and a React console.
 
-For local deployment instructions, start with [DEPLOY.md](/C:/Users/muham/Documents/mab-embabel-local/DEPLOY.md). It documents the dynamic deployment launcher, platform-specific Ollama strategies, verification steps, and expected outputs.
+For local deployment instructions, start with [DEPLOY.md](./DEPLOY.md). It documents the dynamic deployment launcher, platform-specific Ollama strategies, verification steps, and expected outputs.
 
 ## Current System
 
@@ -187,3 +187,5 @@ curl -X POST http://localhost:8081/agent/query \
 - RAG is local document retrieval, not internet search.
 - Email sending remains a local state transition, not SMTP delivery.
 - Calendar data remains local app data, not a Google or Outlook integration.
+
+

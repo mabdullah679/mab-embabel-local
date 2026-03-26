@@ -5,8 +5,8 @@ on conflict (id) do nothing;
 
 insert into hardware_records (id, device_name, manufacturer, cpu, ram, storage, metadata_json)
 values
-('11111111-1111-1111-1111-111111111111', 'embabel-laptop-pro', 'Lenovo', 'Intel i7', '32GB', '1TB SSD', '{"os":"Windows 11","fleet":"engineering"}'),
-('22222222-2222-2222-2222-222222222222', 'embabel-workstation', 'Dell', 'AMD Ryzen 9', '64GB', '2TB NVMe', '{"os":"Ubuntu 24.04","fleet":"ml"}')
+('11111111-1111-1111-1111-111111111111', 'domain-laptop-pro', 'Lenovo', 'Intel i7', '32GB', '1TB SSD', '{"os":"Windows 11","fleet":"engineering"}'),
+('22222222-2222-2222-2222-222222222222', 'domain-workstation', 'Dell', 'AMD Ryzen 9', '64GB', '2TB NVMe', '{"os":"Ubuntu 24.04","fleet":"ml"}')
 on conflict (id) do nothing;
 
 insert into contacts (id, name, email)

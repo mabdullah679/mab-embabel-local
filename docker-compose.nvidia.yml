@@ -1,7 +1,7 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: mab-ollama
+    container_name: domain-ollama
     gpus: all
     environment:
       NVIDIA_VISIBLE_DEVICES: all
@@ -30,3 +30,4 @@ services:
 
 volumes:
   ollama_data:
+

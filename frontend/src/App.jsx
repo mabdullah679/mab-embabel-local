@@ -1,38 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 const pages = ['Agent Console', 'Calendar Viewer', 'Email Mockup', 'Metadata Inspector'];
-const STORAGE_KEY = 'mab-embabel-chat-sessions';
-const SYSTEM_STATE_KEY = 'mab-embabel-database-id';
+const STORAGE_KEY = 'domains-api-chat-sessions';
+const SYSTEM_STATE_KEY = 'domains-api-database-id';
 const ORCHESTRATOR_URL = 'http://localhost:8081';
 const TOOLS_URL = 'http://localhost:8082';
 const AGENT_REQUEST_TIMEOUT_MS = 60000;
-const PRESET_PROMPT_GROUPS = [
-  {
-    title: 'Calendar Tests',
-    prompts: [
-      'add a reminder "push code to origin main" at 12pm today',
-      'what was the last reminder in calendar for today?',
-      'move Event ID: REPLACE_EVENT_ID to friday 10pm'
-    ]
-  },
-  {
-    title: 'Email Tests',
-    prompts: [
-      'draft an email to Joe about tomorrow\'s check-in from me (Sam Carter)',
-      'who are the current recipients for Draft ID: REPLACE_DRAFT_ID?',
-      'add alex@example.local and joe@example.local to Draft ID: REPLACE_DRAFT_ID'
-    ]
-  },
-  {
-    title: 'Cross-Chat Reads',
-    prompts: [
-      'what email drafts do I have for Joe?',
-      'what emails do I have drafted?',
-      'what time is Event ID: REPLACE_EVENT_ID scheduled for?'
-    ]
-  }
-];
-
 function createSession(name = 'New Chat') {
   return {
     id: crypto.randomUUID(),
@@ -438,62 +411,6 @@ function extractCalendarItemIds(session) {
   return ids;
 }
 
-function applyPromptTokens(prompt, context) {
-  return prompt
-    .replaceAll('REPLACE_DRAFT_ID', context.latestDraftId || 'YOUR_DRAFT_ID')
-    .replaceAll('REPLACE_EVENT_ID', context.latestEventId || 'YOUR_EVENT_ID');
-}
-
-function derivePromptContext(session, drafts, items) {
-  const sessionDraftIds = extractEmailDraftIds(session);
-  const sessionEventIds = extractCalendarItemIds(session);
-  const latestDraftId = sessionDraftIds[0] || drafts[0]?.id || '';
-  const latestEventId = sessionEventIds[0] || items[0]?.id || '';
-  const latestDraft = drafts.find((draft) => draft.id === latestDraftId) || drafts[0] || null;
-  const latestEvent = items.find((item) => item.id === latestEventId) || items[0] || null;
-  return { latestDraftId, latestEventId, latestDraft, latestEvent };
-}
-
-function deriveTailoredSuggestions(session, drafts, items) {
-  const context = derivePromptContext(session, drafts, items);
-  const suggestions = [];
-  const lastAssistant = [...(session?.messages || [])].reverse().find((message) => message.role === 'assistant');
-  const lastQuestion = lastAssistant?.result?.pendingClarification?.question || lastAssistant?.result?.result || '';
-  const lastStatus = lastAssistant?.result?.status || '';
-
-  if (lastStatus === 'CLARIFICATION') {
-    const lower = String(lastQuestion).toLowerCase();
-    if (lower.includes('sender')) {
-      suggestions.push('The sender should stay the same.');
-      suggestions.push('The sender is Sam Carter.');
-    }
-    if (lower.includes('recipient')) {
-      suggestions.push(`Use ${context.latestDraft?.recipient || 'alex@example.local'}.`);
-      suggestions.push(`For Draft ID: ${context.latestDraftId || 'YOUR_DRAFT_ID'}, use alex@example.local and joe@example.local.`);
-    }
-    if (lower.includes('which one') && context.latestEventId) {
-      suggestions.push(`Use Event ID: ${context.latestEventId}.`);
-    }
-  }
-
-  if (context.latestDraftId) {
-    suggestions.push(`who are the current recipients for Draft ID: ${context.latestDraftId}?`);
-    suggestions.push(`what is the current status for Draft ID: ${context.latestDraftId}?`);
-  }
-
-  if (context.latestEventId) {
-    suggestions.push(`what time is Event ID: ${context.latestEventId} scheduled for?`);
-    suggestions.push(`move Event ID: ${context.latestEventId} to tomorrow 2pm`);
-  }
-
-  if (!context.latestDraftId && !context.latestEventId) {
-    suggestions.push('add a reminder "push code to origin main" at 12pm today');
-    suggestions.push('draft an email to Joe about tomorrow\'s check-in from me (Sam Carter)');
-  }
-
-  return [...new Set(suggestions)].slice(0, 4);
-}
-
 function formatScore(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : 'n/a';
 }
@@ -647,15 +564,6 @@ function App() {
     () => extractEmailDraftIds(activeSession),
     [activeSession]
   );
-  const promptContext = useMemo(
-    () => derivePromptContext(activeSession, emailDrafts, calendarItems),
-    [activeSession, emailDrafts, calendarItems]
-  );
-  const tailoredSuggestions = useMemo(
-    () => deriveTailoredSuggestions(activeSession, emailDrafts, calendarItems),
-    [activeSession, emailDrafts, calendarItems]
-  );
-
   useEffect(() => {
     reloadReferenceData();
   }, []);
@@ -1228,8 +1136,8 @@ function App() {
         <aside className="sidebar" ref={menuRef}>
         <div className="sidebar-card brand-card">
           <p className="eyebrow">Local Agent Stack</p>
-          <h1>MAB Embabel Local</h1>
-          <p className="brand-copy">Threaded local agent console backed by real MCP tools and guarded routing.</p>
+          <h1>domains-api</h1>
+          <p className="brand-copy">Domain-branded local agent console backed by real MCP tools and guarded routing.</p>
           <button className="new-chat" onClick={createNewChat}>New Chat</button>
         </div>
 
@@ -1344,64 +1252,6 @@ function App() {
               <span className="agent-status-dot" aria-hidden="true" />
               <span>{agentStatus.text}</span>
             </div>
-
-            <section className="prompt-bank">
-              <div className="prompt-bank-header">
-                <div>
-                  <p className="eyebrow">Preset Prompts</p>
-                  <h3>Repeatable Test Flows</h3>
-                </div>
-                <p className="artifact-meta">Preset prompts use the same send path as manual queries. `REPLACE_*` tokens are filled from the latest known draft/event when available.</p>
-              </div>
-              <div className="prompt-group-list">
-                {PRESET_PROMPT_GROUPS.map((group) => (
-                  <section className="prompt-group" key={group.title}>
-                    <strong>{group.title}</strong>
-                    <div className="prompt-chip-list">
-                      {group.prompts.map((prompt) => {
-                        const resolved = applyPromptTokens(prompt, promptContext);
-                        return (
-                          <button
-                            key={`${group.title}-${prompt}`}
-                            type="button"
-                            className="prompt-chip"
-                            disabled={loading}
-                            onClick={() => runQuery(resolved)}
-                            title={resolved}
-                          >
-                            {resolved}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </section>
-
-            <section className="prompt-bank tailored-bank">
-              <div className="prompt-bank-header">
-                <div>
-                  <p className="eyebrow">Suggested Next Step</p>
-                  <h3>Heuristic Follow-Ups</h3>
-                </div>
-                <p className="artifact-meta">These suggestions are derived from the current conversation state, recent draft/event IDs, and the last assistant outcome.</p>
-              </div>
-              <div className="prompt-chip-list">
-                {tailoredSuggestions.map((prompt) => (
-                  <button
-                    key={`tailored-${prompt}`}
-                    type="button"
-                    className="prompt-chip prompt-chip-tailored"
-                    disabled={loading}
-                    onClick={() => runQuery(prompt)}
-                    title={prompt}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </section>
 
             <div className="message-list" ref={messageListRef}>
               {activeSession.messages.length === 0 && (
@@ -1976,3 +1826,4 @@ function App() {
 }
 
 export default App;
+

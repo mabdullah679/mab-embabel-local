@@ -7,7 +7,7 @@ spring:
   ai:
     mcp:
       client:
-        name: mab-orchestrator-mcp-client
+        name: domain-orchestrator-mcp-client
         version: 1.0.0
         type: SYNC
         request-timeout: 20s
@@ -48,3 +48,4 @@ ollama:
   fallback-model: ${OLLAMA_FALLBACK_MODEL:qwen2.5:3b}
   connect-timeout: ${OLLAMA_CONNECT_TIMEOUT:4s}
   read-timeout: ${OLLAMA_READ_TIMEOUT:45s}
+
