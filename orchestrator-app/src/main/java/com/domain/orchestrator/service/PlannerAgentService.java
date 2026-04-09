@@ -72,8 +72,6 @@ public class PlannerAgentService {
                                 null,
                                 "No matching records were found.",
                                 plan,
-                                null,
-                                null,
                                 List.of(),
                                 List.of()
                         )
@@ -91,8 +89,6 @@ public class PlannerAgentService {
                     null,
                     null,
                     plan,
-                    null,
-                    null,
                     records.stream().map(record -> String.valueOf(record.id())).toList(),
                     records.stream().map(this::recordSummary).toList()
             );
@@ -112,8 +108,6 @@ public class PlannerAgentService {
                             null,
                             exception.getMessage(),
                             plan,
-                            null,
-                            null,
                             List.of(),
                             List.of()
                     )
@@ -131,8 +125,8 @@ public class PlannerAgentService {
                 result,
                 traces,
                 "COMPLETED",
-                new PlannerActionPlan("records", "check_consumer_health", "consumer_health", null, null, Map.of(), false, null, 1.0),
-                new PlannerExecutionResult("COMPLETED", result, false, null, null, null, null, null, List.of(), List.of())
+                new PlannerActionPlan("records", "check_consumer_health", "consumer_health", null, Map.of(), false, null, 1.0),
+                new PlannerExecutionResult("COMPLETED", result, false, null, null, null, List.of(), List.of())
         );
     }
 
@@ -148,7 +142,6 @@ public class PlannerAgentService {
                 recordId != null ? "read_record" : "search_records",
                 "consumer_record",
                 recordId == null ? null : String.valueOf(recordId),
-                null,
                 arguments,
                 false,
                 null,
@@ -361,7 +354,7 @@ public class PlannerAgentService {
                                        String status,
                                        PlannerActionPlan plan,
                                        PlannerExecutionResult executionResult) {
-        return new AgentQueryResponse(result, traces, traces.size(), status, plan, executionResult, null);
+        return new AgentQueryResponse(result, traces, traces.size(), status, plan, executionResult);
     }
 
     private record ScoredRecord(ConsumerRecord record, int score) {

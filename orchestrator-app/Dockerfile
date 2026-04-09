@@ -4,7 +4,6 @@ WORKDIR /workspace
 COPY pom.xml ./
 COPY shared-models/pom.xml shared-models/pom.xml
 COPY orchestrator-app/pom.xml orchestrator-app/pom.xml
-COPY tools-app/pom.xml tools-app/pom.xml
 
 RUN mvn -q -pl orchestrator-app -am dependency:go-offline
 

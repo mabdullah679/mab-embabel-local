@@ -1,177 +1,140 @@
 # Architecture
 
-This document describes the system as it exists now.
+This document describes the current shipped architecture.
 
 ## Stack
 
 1. React frontend
 2. Spring orchestrator
-3. Spring MCP tools service
+3. Spring consumer API
 4. Ollama
-5. Postgres + pgvector
-6. Prometheus + Grafana
+5. Prometheus + Grafana
 
-Each layer has a separate responsibility:
-
-- frontend: user interaction and inspection
-- orchestrator: intent routing, guardrails, answer synthesis
-- tools service: business execution and retrieval work
-- Ollama: generation and embeddings
-- Postgres + pgvector: structured records and vector search
-- observability: health and metrics
+The important boundary is:
+- this repo owns the frontend and orchestrator
+- the Spring consumer API is an external local dependency
+- the orchestrator is the only backend component in this repo that reads application data
 
 ## Frontend
 
-The frontend provides:
+The frontend is a chat-only interface.
 
-- `Agent Console`
-- `Calendar Viewer`
-- `Email Mockup`
-- `Metadata Inspector`
+Responsibilities:
+- capture user prompts
+- keep local chat sessions in browser storage
+- send requests to `POST /agent/query`
+- render answers and traces
 
-The chat view now also exposes a RAG inspector inside tool traces. For RAG requests it shows:
+Main files:
+- `frontend/src/App.jsx`
+- `frontend/src/styles.css`
 
-- dense hits
-- lexical hits
-- fused shortlist
-- reranked shortlist
-- final context chunks
-
-The frontend does not decide which tool runs. It sends the prompt to the orchestrator and renders the result and traces.
+The frontend does not call the Spring consumer API directly.
 
 ## Orchestrator
 
-The orchestrator is the planner entrypoint.
+The orchestrator is the backend entrypoint.
 
-Current responsibilities:
+Responsibilities:
+- expose `POST /agent/query`
+- classify the incoming prompt as:
+  - consumer health request
+  - direct record lookup
+  - general record search
+- call the Spring consumer API over REST
+- synthesize a final answer with Ollama
+- return traces for inspection
 
-- receive `POST /agent/query`
-- detect the supported intent
-- apply guardrails
-- invoke exactly one MCP tool when needed
-- synthesize the final user-facing answer
+Main files:
+- `orchestrator-app/src/main/java/com/domain/orchestrator/controller/AgentController.java`
+- `orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java`
+- `orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java`
+- `orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java`
 
-For RAG requests, the orchestrator no longer answers from a raw top hit. It consumes the richer RAG artifact returned by the tools service and builds the final answer from explicit assembled context.
+## Spring Consumer API Integration
 
-## Tools Service
+The REST integration is handled here:
 
-The tools service is the execution boundary.
+- `orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java`
 
-It exposes:
+That class is legacy-named, but it is now the Spring consumer REST client.
 
-- Spring MCP tools for agent-to-tool calls
-- REST endpoints for browser reads and writes
+It performs:
+- `health()` -> `GET /api/health`
+- `records()` -> `GET /api/records`
+- `record(long id)` -> `GET /api/records/{id}`
 
-Current tool domains:
+The class that decides which of those methods to call is:
+- `orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java`
 
-- email drafting
-- calendar item creation
-- metadata lookup
-- hardware search
-- RAG retrieval
+The Spring consumer base URL is configured in:
+- `orchestrator-app/src/main/resources/application.yml`
 
-## MCP
+Property:
+- `consumer.base-url`
 
-The system uses real Spring MCP over SSE between the orchestrator and tools service.
-
-The main code locations are:
-
-- [AgentTools.java](./tools-app/src/main/java/com/domain/tools/mcp/AgentTools.java)
-- [McpToolConfiguration.java](./tools-app/src/main/java/com/domain/tools/config/McpToolConfiguration.java)
-- [ToolsClient.java](./orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java)
-
-Browser traffic still uses normal REST APIs. The browser is not an MCP client.
-
-## Shared Contracts
-
-Shared DTOs live in `shared-models`.
-
-That module now includes richer RAG response types so retrieval traces can preserve staged artifacts rather than only a final document list.
-
-## Data Layer
-
-Postgres stores:
-
-- calendar items
-- contacts
-- email drafts
-- metadata objects
-- hardware records
-- RAG source documents
-- RAG chunks
-- app state
-
-pgvector is used for dense similarity search on chunk embeddings.
-
-PostgreSQL full-text search is used for lexical chunk retrieval.
-
-## Current RAG Design
-
-The current RAG pipeline is:
-
-1. ingest raw text
-2. normalize text
-3. chunk with deterministic overlap
-4. store one source document row plus multiple chunk rows
-5. embed each chunk with `nomic-embed-text`
-6. retrieve dense candidates with pgvector
-7. retrieve lexical candidates with full-text search
-8. fuse rankings with reciprocal-rank-style scoring
-9. rerank the bounded shortlist with `qwen2.5:7b-instruct`
-10. assemble final context with dedupe and budget limits
-11. generate the user-facing answer from that explicit context
-
-The RAG response now carries:
-
-- dense candidates
-- lexical candidates
-- fused candidates
-- reranked candidates
-- selected context chunks
-- answer-context summary
+Default:
+- `http://localhost:8080`
 
 ## Ollama
 
-Ollama runs locally and currently provides:
+Ollama is used for answer synthesis only.
 
-- `qwen2.5:7b-instruct` for summarization, reranking, and answer synthesis
-- `nomic-embed-text` for embeddings
+It is not treated as a data source.
 
-Ollama is not the source of truth for application data. It supports reasoning and retrieval quality around data already stored in Postgres.
+Responsibilities:
+- receive grounded prompts from the orchestrator
+- turn Spring consumer record payloads into concise answers
+
+Main file:
+- `orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java`
+
+## Shared Contracts
+
+The shared DTO layer is intentionally small.
+
+Current module:
+- `shared-models/`
+
+Current DTOs:
+- `AgentQueryRequest`
+- `AgentQueryResponse`
+- `ConsumerHealthResponse`
+- `ConsumerRecord`
+- `ConversationTurn`
+- `PlannerActionPlan`
+- `PlannerExecutionResult`
+- `ToolTrace`
+
+These live under:
+- `shared-models/src/main/java/com/domain/shared/model/`
+
+## End-To-End Request Flow
+
+1. User submits a message in the frontend.
+2. Frontend posts the message to `POST /agent/query`.
+3. `AgentController` forwards the request to `PlannerAgentService`.
+4. `PlannerAgentService` determines whether to:
+   - check consumer health
+   - fetch one specific record
+   - fetch the record list and rank likely matches
+5. `ToolsClient` performs the Spring consumer API REST call.
+6. `PlannerAgentService` builds a grounded prompt from the returned record data.
+7. `OllamaClient` sends that prompt to Ollama.
+8. The orchestrator returns the answer and traces to the frontend.
 
 ## Observability
 
 Observability is provided through:
-
-- Spring Actuator
+- Spring Actuator on the orchestrator
 - Prometheus
 - Grafana
 
-This covers service health, request metrics, latency, JVM metrics, and basic dashboards.
-
-## End-To-End Flow
-
-The main request flow is:
-
-1. the user sends a prompt in the frontend
-2. the frontend sends it to the orchestrator
-3. the orchestrator selects a supported task
-4. when needed, the orchestrator invokes an MCP tool
-5. the tools service reads or writes Postgres data
-6. for RAG, the tools service performs hybrid retrieval and context assembly
-7. the orchestrator returns a user-facing answer and tool traces
-8. the frontend renders the answer and any structured trace views
-
-## Still Local or Simplified
-
-- email sending is still a local draft state transition
-- calendar data is local app data
-- contact management is local app data
-- planner execution remains single-tool per request
+Current telemetry focus:
+- orchestrator health
+- orchestrator request metrics
+- basic JVM/runtime metrics
 
 ## One-Line Summary
 
-This is a local agent system where a Spring orchestrator plans, a Spring MCP tools service executes, Ollama handles generation and embeddings, Postgres stores both application and RAG data, and the frontend exposes both answers and retrieval internals.
-
-
-
+This is a chat-first local application where a Spring orchestrator reads data from an external Spring consumer REST API, uses Ollama to synthesize grounded answers, and returns them to a React frontend with trace visibility.

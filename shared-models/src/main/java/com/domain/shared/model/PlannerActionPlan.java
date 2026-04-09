@@ -9,7 +9,6 @@ public record PlannerActionPlan(
         String action,
         String targetEntityType,
         String targetEntityId,
-        PlannerLookup targetLookup,
         Map<String, Object> arguments,
         @JsonProperty("needsClarification") boolean needsClarification,
         String clarificationQuestion,

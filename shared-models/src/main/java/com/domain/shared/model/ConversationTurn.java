@@ -4,11 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 
 public record ConversationTurn(
         @NotBlank String role,
-        @NotBlank String content,
-        PendingClarification pendingClarification
+        @NotBlank String content
 ) {
-    public ConversationTurn(String role, String content) {
-        this(role, content, null);
-    }
 }
 

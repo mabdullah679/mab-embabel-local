@@ -8,11 +8,10 @@ public record AgentQueryResponse(
         int iterations,
         String status,
         PlannerActionPlan normalizedPlan,
-        PlannerExecutionResult executionResult,
-        PendingClarification pendingClarification
+        PlannerExecutionResult executionResult
 ) {
     public AgentQueryResponse(String result, List<ToolTrace> traces, int iterations) {
-        this(result, traces, iterations, null, null, null, null);
+        this(result, traces, iterations, null, null, null);
     }
 }
 
