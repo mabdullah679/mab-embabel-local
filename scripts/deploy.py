@@ -19,9 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE_COMPOSE = ROOT / "docker-compose.yml"
 NVIDIA_COMPOSE = ROOT / "docker-compose.nvidia.yml"
 HOST_OLLAMA_COMPOSE = ROOT / "docker-compose.host-ollama.yml"
-DEFAULT_TOOLS_URL = "http://localhost:8082"
 DEFAULT_ORCH_HEALTH = "http://localhost:8081/actuator/health"
-DEFAULT_TOOLS_HEALTH = "http://localhost:8082/actuator/health"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_CONNECT_TIMEOUT = "4s"
 DEFAULT_OLLAMA_READ_TIMEOUT = "45s"
@@ -29,11 +27,6 @@ DEFAULT_PRIMARY_WARMUP_TIMEOUT_SECONDS = 90
 DEFAULT_FALLBACK_WARMUP_TIMEOUT_SECONDS = 30
 DEFAULT_WARMUP_PROGRESS_INTERVAL_SECONDS = 5
 MIN_PYTHON = (3, 9)
-RAG_SEED_DOCS = [
-    "Spring MCP tools are orchestrated by a planner agent in this local architecture.",
-    "The orchestrator receives natural language queries and routes them to typed tools.",
-    "RAG retrieval uses pgvector similarity search with embeddings from nomic-embed-text.",
-]
 MODEL_PROFILES = {
     "gpu": {
         "generation": "qwen2.5:7b-instruct",
@@ -81,20 +74,13 @@ def wait_for_health(max_attempts: int = 90, sleep_seconds: int = 2) -> None:
     for _ in range(max_attempts):
         try:
             orch = request_json(DEFAULT_ORCH_HEALTH).get("status")
-            tools = request_json(DEFAULT_TOOLS_HEALTH).get("status")
-            if orch == "UP" and tools == "UP":
+            if orch == "UP":
                 print("Services are healthy")
                 return
         except Exception:
             pass
         time.sleep(sleep_seconds)
     raise SystemExit("Services did not become healthy in time")
-
-
-def seed_rag() -> None:
-    for doc in RAG_SEED_DOCS:
-        response = request_json(f"{DEFAULT_TOOLS_URL}/api/rag/ingest", method="POST", body={"content": doc}, timeout=120)
-        print(f"Seeded RAG document: {response.get('id')}")
 
 
 def is_command_available(command: str) -> bool:
@@ -366,7 +352,7 @@ def do_ps(files: list[Path], env: dict[str, str]) -> None:
 def bootstrap(strategy: str, files: list[Path], env: dict[str, str]) -> None:
     ensure_host_ollama(strategy)
     if strategy == "nvidia-container-ollama":
-        do_up_services(files, env, ["postgres", "ollama"])
+        do_up_services(files, env, ["ollama"])
         pull_models(strategy, env)
         warm_models(env)
         do_up(files, env, build=True)
@@ -375,7 +361,6 @@ def bootstrap(strategy: str, files: list[Path], env: dict[str, str]) -> None:
         warm_models(env)
         do_up(files, env, build=True)
     wait_for_health()
-    seed_rag()
 
 
 def main() -> None:

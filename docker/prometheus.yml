@@ -10,8 +10,3 @@ scrape_configs:
     static_configs:
       - targets: ["orchestrator-app:8081"]
 
-  - job_name: tools-app
-    metrics_path: /actuator/prometheus
-    static_configs:
-      - targets: ["tools-app:8082"]
-

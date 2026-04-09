@@ -4,20 +4,6 @@ server:
 spring:
   application:
     name: orchestrator-app
-  ai:
-    mcp:
-      client:
-        name: domain-orchestrator-mcp-client
-        version: 1.0.0
-        type: SYNC
-        request-timeout: 20s
-        toolcallback:
-          enabled: true
-        sse:
-          connections:
-            tools:
-              url: ${TOOLS_BASE_URL:http://localhost:8082}
-              sse-endpoint: /sse
 
 management:
   endpoints:
@@ -39,8 +25,8 @@ management:
       percentiles-histogram:
         http.server.requests: true
 
-tools:
-  base-url: ${TOOLS_BASE_URL:http://localhost:8082}
+consumer:
+  base-url: ${SPRING_CONSUMER_BASE_URL:http://localhost:8080}
 
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}

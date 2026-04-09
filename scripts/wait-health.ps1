@@ -1,6 +1,5 @@
 param(
   [string]$OrchestratorHealthUrl = "http://localhost:8081/actuator/health",
-  [string]$ToolsHealthUrl = "http://localhost:8082/actuator/health",
   [int]$MaxAttempts = 60,
   [int]$SleepSeconds = 2
 )
@@ -8,8 +7,7 @@ param(
 for ($i = 0; $i -lt $MaxAttempts; $i++) {
   try {
     $o = (Invoke-RestMethod -Uri $OrchestratorHealthUrl).status
-    $t = (Invoke-RestMethod -Uri $ToolsHealthUrl).status
-    if ($o -eq 'UP' -and $t -eq 'UP') {
+    if ($o -eq 'UP') {
       Write-Host 'Services are healthy'
       exit 0
     }

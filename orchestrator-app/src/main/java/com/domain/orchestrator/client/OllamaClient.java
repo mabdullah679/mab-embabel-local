@@ -17,15 +17,12 @@ public class OllamaClient {
     private final String ollamaBaseUrl;
     private final String generationModel;
     private final String fallbackModel;
-    private final ToolsClient toolsClient;
 
     public OllamaClient(RestTemplate restTemplate,
-                        ToolsClient toolsClient,
                         @Value("${ollama.base-url:http://localhost:11434}") String ollamaBaseUrl,
                         @Value("${ollama.generation-model:qwen2.5:7b-instruct}") String generationModel,
                         @Value("${ollama.fallback-model:qwen2.5:3b}") String fallbackModel) {
         this.restTemplate = restTemplate;
-        this.toolsClient = toolsClient;
         this.ollamaBaseUrl = ollamaBaseUrl;
         this.generationModel = generationModel;
         this.fallbackModel = fallbackModel;
@@ -96,25 +93,11 @@ public class OllamaClient {
             throw new IllegalStateException("ollama.generation-model must be configured by deployment");
         }
         LinkedHashSet<String> ordered = new LinkedHashSet<>();
-        String active = activeGenerationModel();
-        ordered.add(active);
         ordered.add(generationModel.trim());
         if (fallbackModel != null && !fallbackModel.isBlank()) {
             ordered.add(fallbackModel.trim());
         }
         return ordered.stream().filter(model -> !Objects.equals(model, "")).toList();
-    }
-
-    private String activeGenerationModel() {
-        try {
-            var state = toolsClient.systemState();
-            if (state != null && state.activeGenerationModel() != null && !state.activeGenerationModel().isBlank()) {
-                return state.activeGenerationModel().trim();
-            }
-        } catch (RuntimeException ignored) {
-            // Fall back to deployment default if tools state is unavailable.
-        }
-        return generationModel.trim();
     }
 }
 
