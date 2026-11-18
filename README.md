@@ -1,191 +1,64 @@
-# domains-api
+# mab-embabel-local
 
-Local chat application that answers questions from a Spring Boot consumer API through a Spring orchestrator, Ollama, and a React frontend.
+A local chat app: a React chat UI sends questions to a Spring Boot orchestrator, which fetches records from an external Spring consumer REST API and has a local Ollama model write a grounded answer.
 
-The current working version is intentionally narrow:
-- the frontend is chat-only
-- the backend reads application data only from the Spring consumer REST API
-- the orchestrator uses Ollama to turn retrieved record data into final responses
-- Prometheus and Grafana remain available for local observability
+Design docs, not a formal spec: [ARCHITECTURE.md](ARCHITECTURE.md), [DEPLOY.md](DEPLOY.md), [PLAN.md](PLAN.md), [ANALYZE.md](ANALYZE.md).
 
-## Current Architecture
+```text
+browser :5173 -> frontend (nginx) -> orchestrator-app :8081 -> consumer API :8080   (external)
+                                              |-----------------> Ollama :11434     (external or container)
+                    Prometheus :9090 --scrapes--> /actuator/prometheus ; Grafana :3000
+```
 
-- `orchestrator-app/`
-  - Spring Boot API exposing `POST /agent/query`
-  - owns query interpretation, record selection, and answer synthesis
-  - calls the Spring consumer API over REST
-- `shared-models/`
-  - small DTO module shared by the orchestrator request/response path
-- `frontend/`
-  - React chat interface
-  - sends user prompts to the orchestrator only
-- `docker/`
-  - Prometheus and Grafana configuration
-- `scripts/`
-  - local deployment/bootstrap helpers
-
-External dependency:
-- Spring consumer API expected at `http://localhost:8080`
-  - `GET /api/health`
-  - `GET /api/records`
-  - `GET /api/records/{id}`
-
-## Runtime Flow
-
-1. The user sends a message from the chat UI.
-2. The frontend posts that message to `POST /agent/query` on the orchestrator.
-3. The orchestrator decides whether the request is a health check, a direct record lookup, or a broader record search.
-4. The orchestrator calls the Spring consumer API over REST to fetch record data.
-5. The orchestrator passes the retrieved record payloads to Ollama for grounded answer synthesis.
-6. The orchestrator returns the answer plus trace data to the frontend.
-
-## Spring Consumer REST Integration
-
-This is the backend path that handles REST calls to the Spring Boot consumer API.
-
-Main entry points:
-- `orchestrator-app/src/main/java/com/domain/orchestrator/controller/AgentController.java`
-  - HTTP controller for `POST /agent/query`
-  - hands requests to the orchestrator service
-- `orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java`
-  - main orchestration logic
-  - inspects the user query
-  - decides whether to call health, fetch a specific record, or search records
-  - builds the grounded prompt for Ollama from returned Spring consumer data
-- `orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java`
-  - despite the legacy class name, this is now the REST client for the Spring consumer API
-  - performs:
-    - `health()` -> `GET /api/health`
-    - `records()` -> `GET /api/records`
-    - `record(long id)` -> `GET /api/records/{id}`
-- `orchestrator-app/src/main/resources/application.yml`
-  - configures the consumer base URL with `consumer.base-url`
-  - default is `http://localhost:8080`
-
-Related DTOs:
-- `shared-models/src/main/java/com/domain/shared/model/ConsumerHealthResponse.java`
-- `shared-models/src/main/java/com/domain/shared/model/ConsumerRecord.java`
-- `shared-models/src/main/java/com/domain/shared/model/AgentQueryRequest.java`
-- `shared-models/src/main/java/com/domain/shared/model/AgentQueryResponse.java`
-- `shared-models/src/main/java/com/domain/shared/model/PlannerActionPlan.java`
-- `shared-models/src/main/java/com/domain/shared/model/PlannerExecutionResult.java`
-- `shared-models/src/main/java/com/domain/shared/model/ToolTrace.java`
-
-For codebase analysis, the shortest useful reading path is:
-1. `orchestrator-app/src/main/java/com/domain/orchestrator/controller/AgentController.java`
-2. `orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java`
-3. `orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java`
-4. `orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java`
-5. `shared-models/src/main/java/com/domain/shared/model/`
-
-## Frontend
-
-The frontend is a chat-only React application.
-
-Relevant files:
-- `frontend/src/App.jsx`
-  - session management
-  - chat submission
-  - trace rendering
-- `frontend/src/styles.css`
-  - chat UI styling
-
-The frontend talks only to:
-- `http://localhost:8081/agent/query`
-
-## Service URLs
-
-- Frontend: `http://localhost:5173`
-- Orchestrator: `http://localhost:8081`
-- Spring consumer API: `http://localhost:8080`
-- Ollama API: `http://localhost:11434`
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3000`
+Not local or contained: the Spring consumer API on port 8080 (not in this repo; the sibling `prod-stack-sim-local` repo's `consumer-app` is a candidate, unverified here) and the Ollama models `qwen2.5:7b-instruct` and `qwen2.5:3b`. Despite the repo name, no code here uses the Embabel framework (no reference to it in any tracked file).
 
 ## Prerequisites
+- Docker with Compose v2, Python 3 (for the launcher), free ports 3000, 5173, 8081, 9090.
+- Ollama with the two models above, reachable from the orchestrator (host Ollama, or a container via the NVIDIA overlay).
+- A consumer API answering `GET /api/health`, `/api/records`, `/api/records/{id}` on port 8080.
+- Not needed on the host to run: Java, Maven, Node (images build them). For local builds: JDK 17+ and Maven, Node 20+.
 
-- Docker Desktop
-- Java 21 + Maven
-- Node.js 20+
-- Ollama with:
-  - `qwen2.5:7b-instruct`
-  - `qwen2.5:3b`
-- Spring consumer API running locally on port `8080`
+## Run it
+1. Start the consumer API and Ollama (pull both models).
+2. `python scripts/deploy.py plan` previews the strategy it detects.
+3. `python scripts/deploy.py bootstrap` (or `make bootstrap`) builds and starts everything.
+4. Open http://localhost:5173 and ask "show record 4".
 
-## Start Everything
+Failure branch: the orchestrator refuses to start if Ollama is unreachable or a configured model is missing ([OllamaModelValidator.java](orchestrator-app/src/main/java/com/domain/orchestrator/config/OllamaModelValidator.java)); see [DEPLOY.md](DEPLOY.md) for host-Ollama vs NVIDIA strategies and [external-user-ux-hiccups.md](external-user-ux-hiccups.md). Override URLs with `SPRING_CONSUMER_BASE_URL`, `OLLAMA_BASE_URL` ([docker-compose.yml](docker-compose.yml)). `make wait` runs a PowerShell script and works on Windows only.
 
-```bash
-python scripts/deploy.py bootstrap
-```
+## What it does
+| Action | Result |
+|---|---|
+| Chat: "show record 4" | Orchestrator fetches `GET /api/records/4` and Ollama summarises it, with a trace of the calls |
+| Chat: "what is synced right now?" | Fetches all records, answers from them |
+| Health-style question | Calls consumer `/api/health` |
+| Open Grafana (admin/admin) | Provisioned dashboard from [docker/grafana](docker/grafana) |
 
-Or:
+Routing between those three paths is regex based ([PlannerAgentService.java](orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java)); the model only writes the final answer.
 
-```bash
-make bootstrap
-```
+## Interface
+| Endpoint | Method | Auth |
+|---|---|---|
+| `:8081/agent/query` body `{"query":"...","history":[]}` | POST | none |
+| `:8081/actuator/health`, `/actuator/prometheus` | GET | none |
+| `:8080/api/health`, `/api/records`, `/api/records/{id}` | GET (consumer, external) | n/a |
 
-The deployment launcher:
-- detects whether Ollama should run in Docker or on the host
-- builds the orchestrator and frontend
-- starts Prometheus and Grafana
-- waits for orchestrator health
+## Tests
+No automated tests exist in this repo (no `src/test`, no frontend test runner). CI only builds: `mvn package` for the Java modules, `npm ci && npm run build` for the frontend, `docker compose build`, plus a gitleaks scan. The end-to-end chat path is not exercised by anything automated, because it needs Ollama and the consumer API.
 
-Preview the detected plan:
+## Layout
+| Path | Role |
+|---|---|
+| [orchestrator-app](orchestrator-app) | Spring Boot API; [AgentController](orchestrator-app/src/main/java/com/domain/orchestrator/controller/AgentController.java), [PlannerAgentService](orchestrator-app/src/main/java/com/domain/orchestrator/service/PlannerAgentService.java), [ToolsClient](orchestrator-app/src/main/java/com/domain/orchestrator/client/ToolsClient.java) (REST client for the consumer API; legacy name), [OllamaClient](orchestrator-app/src/main/java/com/domain/orchestrator/client/OllamaClient.java) |
+| [shared-models](shared-models) | Request/response DTOs |
+| [frontend](frontend) | React + Vite chat UI ([App.jsx](frontend/src/App.jsx)) served by nginx |
+| [docker](docker) | Prometheus, Grafana config; [postgres-init](docker/postgres-init) is unused (see decisions) |
+| [scripts/deploy.py](scripts/deploy.py) | Picks the Ollama strategy and runs bootstrap/up/down |
+| [docker-compose.yml](docker-compose.yml), [nvidia](docker-compose.nvidia.yml), [host-ollama](docker-compose.host-ollama.yml) | Base stack and overlays |
+| [LLM_RELEASE_PACKAGING.txt](LLM_RELEASE_PACKAGING.txt) | How Ollama models were moved to an offline machine |
+| [CLAUDE.md](CLAUDE.md) | Notes for AI sessions |
 
-```bash
-python scripts/deploy.py plan
-```
-
-## Quick Checks
-
-Health check against the Spring consumer API:
-
-```bash
-curl http://localhost:8080/api/health
-```
-
-Fetch one record from the Spring consumer API:
-
-```bash
-curl http://localhost:8080/api/records/4
-```
-
-Run a chat query through the orchestrator:
-
-```bash
-curl -X POST http://localhost:8081/agent/query \
-  -H "Content-Type: application/json" \
-  -d '{"query":"show record 4","history":[]}'
-```
-
-Run a broader data question:
-
-```bash
-curl -X POST http://localhost:8081/agent/query \
-  -H "Content-Type: application/json" \
-  -d '{"query":"what is synced right now?","history":[]}'
-```
-
-## Deployment Files
-
-- `docker-compose.yml`
-  - base local stack
-- `docker-compose.nvidia.yml`
-  - adds Ollama with NVIDIA GPU passthrough
-- `docker-compose.host-ollama.yml`
-  - points the orchestrator at host Ollama
-- `scripts/deploy.py`
-  - chooses strategy and runs bootstrap/up/down flows
-
-## Telemetry
-
-- Orchestrator metrics: `http://localhost:8081/actuator/prometheus`
-- Prometheus scrapes the orchestrator
-- Grafana is provisioned from `docker/grafana/`
-
-## Notes
-
-- The class name `ToolsClient` is legacy naming; it now serves as the Spring consumer REST client.
-- The backend no longer depends on the retired `tools-app` module.
-- The application data source is the Spring consumer API, not a local Postgres-owned tool service.
-- Ollama is still used for response synthesis, but not as a data source.
+## Design decisions
+- Records come only from the consumer REST API, not a local database: a local Postgres would duplicate the source of truth. [docker/postgres-init](docker/postgres-init) is left from the retired design and no compose file mounts it.
+- Ollama is used for wording, not for deciding what to fetch: the regex router is deterministic and testable; an LLM planner would add a failure mode.
+- Prometheus and Grafana images are `latest` and Grafana uses the default admin/admin login: acceptable for a local stack, not for exposure.
